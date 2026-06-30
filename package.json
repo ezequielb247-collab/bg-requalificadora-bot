@@ -1,0 +1,22 @@
+{
+  "name": "bg-requalificadora-bot",
+  "version": "1.0.0",
+  "description": "Autoatendimento WhatsApp para BG Requalificadora - GNV",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
