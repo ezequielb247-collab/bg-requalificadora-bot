@@ -85,6 +85,17 @@ async function carregarValores() {
   }
 }
 
+function nomeServicoPorOpcao(opcao) {
+  const servicos = {
+    '1': 'Reteste de cilindro de GNV',
+    '2': 'Retirada de kit GNV',
+    '3': 'Revisão de kit GNV',
+    '4': 'Instalação de kit GNV',
+  };
+
+  return servicos[opcao] || 'Serviço';
+}
+
 async function montarResposta(opcao) {
   const valores = await carregarValores();
 
@@ -107,9 +118,7 @@ Valor referente a 1 cilindro:
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Para realizar o serviço, basta trazer o carro até a oficina.
-
-Para ver o menu novamente, envie: menu`;
+Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === '2') {
@@ -127,9 +136,7 @@ Valores:
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Para realizar o serviço, basta trazer o carro até a oficina.
-
-Para ver o menu novamente, envie: menu`;
+Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === '3') {
@@ -148,9 +155,7 @@ Valores:
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Para realizar o serviço, basta trazer o carro até a oficina.
-
-Para ver o menu novamente, envie: menu`;
+Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === '4') {
@@ -158,14 +163,10 @@ Para ver o menu novamente, envie: menu`;
 
 O valor da instalação é negociado diretamente com o atendente, pois pode variar conforme o veículo e o tipo de kit.
 
-👨‍🔧 Nossa equipe foi avisada e vai te orientar melhor.
+👨‍🔧 Nossa equipe pode te orientar melhor sobre valores, documentos e prazo.
 
 📍 Endereço:
-${ENDERECO_OFICINA}
-
-Aguarde um momento, por favor.
-
-Para ver o menu novamente, envie: menu`;
+${ENDERECO_OFICINA}`;
   }
 
   if (opcao === '5') {
@@ -388,6 +389,63 @@ async function sendMenuInterativo(to) {
   }
 }
 
+async function sendConfirmacaoServico(to, servico, opcaoServico) {
+  if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
+    console.error('❌ WHATSAPP_TOKEN ou PHONE_NUMBER_ID não configurado.');
+    return;
+  }
+
+  const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
+
+  try {
+    const response = await axios.post(
+      url,
+      {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: `Você tem interesse em fazer o serviço: ${servico}?\n\nPodemos te esperar na loja?`,
+          },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: `caminho_${opcaoServico}`,
+                  title: 'Estou a caminho',
+                },
+              },
+              {
+                type: 'reply',
+                reply: {
+                  id: `interesse_${opcaoServico}`,
+                  title: 'Tenho interesse',
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('✅ Confirmação de serviço enviada:', response.data);
+  } catch (error) {
+    console.error(
+      '❌ Erro ao enviar confirmação de serviço:',
+      error.response?.data || error.message
+    );
+  }
+}
+
 function extrairOpcao(message) {
   if (message?.type === 'interactive') {
     const listReplyId = message.interactive?.list_reply?.id;
@@ -396,6 +454,14 @@ function extrairOpcao(message) {
 
     if (id.startsWith('opcao_')) {
       return id.replace('opcao_', '');
+    }
+
+    if (id.startsWith('caminho_')) {
+      return id;
+    }
+
+    if (id.startsWith('interesse_')) {
+      return id;
     }
 
     return id.replace(/[^0-9]/g, '');
@@ -451,12 +517,12 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
     console.error('❌ Erro ao buscar histórico do cliente:', error.message);
   }
 
-  const texto = `🚨 Cliente pediu atendimento humano
+  const texto = `🚨 Cliente precisa de atendimento
 
 👤 Nome: ${nomeCliente || 'Não informado'}
 📱 Número: ${clienteNumero}
 
-💬 Mensagem atual:
+💬 Situação:
 ${mensagemCliente || 'Cliente solicitou atendimento'}
 
 📌 Últimas interações:
@@ -471,6 +537,46 @@ Entre em contato com o cliente pelo WhatsApp.`;
   for (const atendente of atendentes) {
     await sendTextMessage(atendente, texto);
   }
+}
+
+async function processarConfirmacaoServico(opcao, from, nomeCliente) {
+  if (opcao.startsWith('caminho_')) {
+    const opcaoServico = opcao.replace('caminho_', '');
+    const servico = nomeServicoPorOpcao(opcaoServico);
+
+    await sendTextMessage(
+      from,
+      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.\n\n📍 Endereço:\n${ENDERECO_OFICINA}`
+    );
+
+    await avisarAtendente(
+      from,
+      nomeCliente,
+      `Cliente informou que está a caminho para: ${servico}`
+    );
+
+    return true;
+  }
+
+  if (opcao.startsWith('interesse_')) {
+    const opcaoServico = opcao.replace('interesse_', '');
+    const servico = nomeServicoPorOpcao(opcaoServico);
+
+    await sendTextMessage(
+      from,
+      `✅ Certo! Nossa equipe foi avisada sobre seu interesse em: ${servico}.\n\nAguarde um momento, por favor.`
+    );
+
+    await avisarAtendente(
+      from,
+      nomeCliente,
+      `Cliente demonstrou interesse em: ${servico}`
+    );
+
+    return true;
+  }
+
+  return false;
 }
 
 app.get('/', (req, res) => {
@@ -533,6 +639,11 @@ app.post('/webhook', async (req, res) => {
       console.error('❌ Erro ao salvar conversa na planilha:', error.message);
     }
 
+    if (opcao && (opcao.startsWith('caminho_') || opcao.startsWith('interesse_'))) {
+      await processarConfirmacaoServico(opcao, from, nomeCliente);
+      return res.sendStatus(200);
+    }
+
     if (!opcao) {
       console.log('📤 Enviando menu interativo...');
       await sendMenuInterativo(from);
@@ -551,7 +662,13 @@ app.post('/webhook', async (req, res) => {
     await sendTextMessage(from, resposta);
     console.log('✅ Resposta processada.');
 
-    if (opcao === '4' || opcao === '9') {
+    if (['1', '2', '3', '4'].includes(opcao)) {
+      const servico = nomeServicoPorOpcao(opcao);
+      console.log('📤 Enviando confirmação do serviço...');
+      await sendConfirmacaoServico(from, servico, opcao);
+    }
+
+    if (opcao === '9') {
       console.log('📢 Avisando atendente...');
       await avisarAtendente(from, nomeCliente, textoCliente);
     }
