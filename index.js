@@ -470,15 +470,23 @@ function extrairOpcao(message) {
   const textoMinusculo = text.toLowerCase();
 
   if (
-    textoMinusculo === 'oi' ||
-    textoMinusculo === 'olá' ||
-    textoMinusculo === 'ola' ||
-    textoMinusculo === 'menu' ||
-    textoMinusculo === 'inicio' ||
-    textoMinusculo === 'início'
-  ) {
-    return '';
-  }
+  textoMinusculo.includes('oi') ||
+  textoMinusculo.includes('olá') ||
+  textoMinusculo.includes('ola') ||
+  textoMinusculo.includes('menu') ||
+  textoMinusculo.includes('inicio') ||
+  textoMinusculo.includes('início') ||
+  textoMinusculo.includes('bom dia') ||
+  textoMinusculo.includes('boa tarde') ||
+  textoMinusculo.includes('boa noite') ||
+  textoMinusculo.includes('informação') ||
+  textoMinusculo.includes('informacoes') ||
+  textoMinusculo.includes('informações') ||
+  textoMinusculo.includes('atendimento') ||
+  textoMinusculo.includes('gnv')
+) {
+  return '';
+}
 
   return text.replace(/[^0-9]/g, '');
 }
