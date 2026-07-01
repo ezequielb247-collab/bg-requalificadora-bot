@@ -6,7 +6,6 @@ const axios = require('axios');
 const {
   getValores,
   salvarConversa,
-  buscarUltimasConversas,
 } = require('./services/sheets');
 
 const app = express();
@@ -499,24 +498,6 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
     return;
   }
 
-  let historicoTexto = '';
-
-  try {
-    const ultimasConversas = await buscarUltimasConversas(clienteNumero, 8);
-
-    if (ultimasConversas.length > 0) {
-      historicoTexto = ultimasConversas
-        .map((item, index) => {
-          return `${index + 1}. ${item.mensagem || 'Sem mensagem'} ${
-            item.opcao ? `(opção: ${item.opcao})` : ''
-          }`;
-        })
-        .join('\n');
-    }
-  } catch (error) {
-    console.error('❌ Erro ao buscar histórico do cliente:', error.message);
-  }
-
   const texto = `🚨 Cliente precisa de atendimento
 
 👤 Nome: ${nomeCliente || 'Não informado'}
@@ -524,9 +505,6 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
 
 💬 Situação:
 ${mensagemCliente || 'Cliente solicitou atendimento'}
-
-📌 Últimas interações:
-${historicoTexto || 'Nenhum histórico encontrado.'}
 
 Entre em contato com o cliente pelo WhatsApp.`;
 
@@ -552,7 +530,7 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
     await avisarAtendente(
       from,
       nomeCliente,
-      `Cliente informou que está a caminho para: ${servico}`
+      `✅ Serviço: ${servico}\n📌 Ação: Cliente informou que está a caminho.`
     );
 
     return true;
@@ -570,7 +548,7 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
     await avisarAtendente(
       from,
       nomeCliente,
-      `Cliente demonstrou interesse em: ${servico}`
+      `✅ Serviço de interesse: ${servico}\n📌 Ação: Cliente demonstrou interesse.`
     );
 
     return true;
@@ -670,7 +648,7 @@ app.post('/webhook', async (req, res) => {
 
     if (opcao === '9') {
       console.log('📢 Avisando atendente...');
-      await avisarAtendente(from, nomeCliente, textoCliente);
+      await avisarAtendente(from, nomeCliente, 'Cliente solicitou atendimento humano.');
     }
 
     return res.sendStatus(200);
