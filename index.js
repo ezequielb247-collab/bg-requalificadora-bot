@@ -435,7 +435,13 @@ ${historicoTexto || 'Nenhum histórico encontrado.'}
 
 Entre em contato com o cliente pelo WhatsApp.`;
 
-  await sendTextMessage(ATENDENTE_NUMERO, texto);
+  const atendentes = ATENDENTE_NUMERO.split(',')
+  .map((numero) => numero.trim())
+  .filter(Boolean);
+
+for (const atendente of atendentes) {
+  await sendTextMessage(atendente, texto);
+}
 }
 
 app.get('/', (req, res) => {
