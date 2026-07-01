@@ -154,6 +154,21 @@ Para ver o menu novamente, envie: menu`;
   }
 
   if (opcao === '4') {
+    return `✅ INSTALAÇÃO DE KIT GNV
+
+O valor da instalação é negociado diretamente com o atendente, pois pode variar conforme o veículo e o tipo de kit.
+
+👨‍🔧 Nossa equipe foi avisada e vai te orientar melhor.
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+Aguarde um momento, por favor.
+
+Para ver o menu novamente, envie: menu`;
+  }
+
+  if (opcao === '5') {
     return `💰 VALORES DOS SERVIÇOS
 
 ✅ Reteste de GNV:
@@ -174,13 +189,16 @@ Para ver o menu novamente, envie: menu`;
 • Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
 • À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
 
+✅ Instalação de kit GNV:
+• Valor negociado diretamente com o atendente
+
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
 Para ver o menu novamente, envie: menu`;
   }
 
-  if (opcao === '5') {
+  if (opcao === '6') {
     return `📄 DOCUMENTOS NECESSÁRIOS
 
 Para reteste de GNV ou retirada de kit GNV, é necessário trazer:
@@ -188,19 +206,23 @@ Para reteste de GNV ou retirada de kit GNV, é necessário trazer:
 • Documento do carro ou documento do GNV
 • Precisa estar no nome do último proprietário do veículo
 
-Para ver o menu novamente, envie: menu`;
-  }
-
-  if (opcao === '6') {
-    return `⏱️ PRAZO DE ENTREGA
-
-• Trazendo o carro de manhã, entregamos no início da tarde.
-• Trazendo o carro à tarde, entregamos no final do dia.
+Para instalação de kit GNV, fale com o atendente para receber a orientação correta.
 
 Para ver o menu novamente, envie: menu`;
   }
 
   if (opcao === '7') {
+    return `⏱️ PRAZO DE ENTREGA
+
+• Trazendo o carro de manhã, entregamos no início da tarde.
+• Trazendo o carro à tarde, entregamos no final do dia.
+
+Para instalação de kit GNV, o prazo deve ser confirmado diretamente com o atendente.
+
+Para ver o menu novamente, envie: menu`;
+  }
+
+  if (opcao === '8') {
     return `📍 ENDEREÇO E HORÁRIO
 
 ${NOME_OFICINA}
@@ -216,7 +238,7 @@ Para realizar o serviço, basta trazer o carro até a oficina.
 Para ver o menu novamente, envie: menu`;
   }
 
-  if (opcao === '8') {
+  if (opcao === '9') {
     return `👨‍🔧 ATENDIMENTO HUMANO
 
 Certo! Já avisei nossa equipe.
@@ -313,26 +335,31 @@ async function sendMenuInterativo(to) {
                   },
                   {
                     id: 'opcao_4',
-                    title: 'Valores dos serviços',
-                    description: 'Tabela completa',
+                    title: 'Instalação GNV',
+                    description: 'Valor com atendente',
                   },
                   {
                     id: 'opcao_5',
+                    title: 'Valores',
+                    description: 'Tabela de serviços',
+                  },
+                  {
+                    id: 'opcao_6',
                     title: 'Documentos',
                     description: 'O que precisa trazer',
                   },
                   {
-                    id: 'opcao_6',
+                    id: 'opcao_7',
                     title: 'Prazo de entrega',
                     description: 'Manhã ou tarde',
                   },
                   {
-                    id: 'opcao_7',
+                    id: 'opcao_8',
                     title: 'Endereço e horário',
                     description: 'Localização da oficina',
                   },
                   {
-                    id: 'opcao_8',
+                    id: 'opcao_9',
                     title: 'Falar atendente',
                     description: 'Atendimento humano',
                   },
@@ -428,7 +455,7 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
 📱 Número: ${clienteNumero}
 
 💬 Mensagem atual:
-${mensagemCliente || 'Opção 8 - Falar com atendente'}
+${mensagemCliente || 'Cliente solicitou atendimento'}
 
 📌 Últimas interações:
 ${historicoTexto || 'Nenhum histórico encontrado.'}
@@ -436,12 +463,12 @@ ${historicoTexto || 'Nenhum histórico encontrado.'}
 Entre em contato com o cliente pelo WhatsApp.`;
 
   const atendentes = ATENDENTE_NUMERO.split(',')
-  .map((numero) => numero.trim())
-  .filter(Boolean);
+    .map((numero) => numero.trim())
+    .filter(Boolean);
 
-for (const atendente of atendentes) {
-  await sendTextMessage(atendente, texto);
-}
+  for (const atendente of atendentes) {
+    await sendTextMessage(atendente, texto);
+  }
 }
 
 app.get('/', (req, res) => {
@@ -522,7 +549,7 @@ app.post('/webhook', async (req, res) => {
     await sendTextMessage(from, resposta);
     console.log('✅ Resposta processada.');
 
-    if (opcao === '8') {
+    if (opcao === '4' || opcao === '9') {
       console.log('📢 Avisando atendente...');
       await avisarAtendente(from, nomeCliente, textoCliente);
     }
