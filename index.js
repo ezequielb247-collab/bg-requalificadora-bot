@@ -169,36 +169,6 @@ ${ENDERECO_OFICINA}`;
   }
 
   if (opcao === '5') {
-    return `💰 VALORES DOS SERVIÇOS
-
-✅ Reteste de cilindro de GNV:
-• Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
-• À vista: ${formatarMoeda(valores.reteste_vista)}
-
-✅ Retirada de kit GNV:
-• 5ª geração: ${formatarMoeda(valores.retirada_kit_5)}
-• 3ª geração: ${formatarMoeda(valores.retirada_kit_3)}
-
-✅ Revisão de kit GNV:
-
-3ª geração:
-• Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
-• À vista: ${formatarMoeda(valores.revisao_kit_3_vista)}
-
-5ª geração:
-• Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
-• À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
-
-✅ Instalação de kit GNV:
-• Valor negociado diretamente com o atendente
-
-📍 Endereço:
-${ENDERECO_OFICINA}
-
-Para ver o menu novamente, envie: menu`;
-  }
-
-  if (opcao === '6') {
     return `📄 DOCUMENTOS NECESSÁRIOS
 
 Para reteste de cilindro de GNV ou retirada de kit GNV, é necessário trazer:
@@ -211,20 +181,7 @@ Para instalação de kit GNV, fale com o atendente para receber a orientação c
 Para ver o menu novamente, envie: menu`;
   }
 
-  if (opcao === '7') {
-    return `⏱️ PRAZO DE ENTREGA
-
-✅ Reteste de cilindro de GNV:
-• Trazendo o carro de manhã, entregamos no final da tarde.
-• Trazendo o carro à tarde, entregamos no outro dia pela manhã.
-
-✅ Instalação de kit GNV:
-• O prazo deve ser confirmado diretamente com o atendente.
-
-Para ver o menu novamente, envie: menu`;
-  }
-
-  if (opcao === '8') {
+  if (opcao === '6') {
     return `📍 ENDEREÇO E HORÁRIO
 
 ${NOME_OFICINA}
@@ -240,7 +197,7 @@ Para realizar o serviço, basta trazer o carro até a oficina.
 Para ver o menu novamente, envie: menu`;
   }
 
-  if (opcao === '9') {
+  if (opcao === '7') {
     return `👨‍🔧 ATENDIMENTO HUMANO
 
 Certo! Já avisei nossa equipe.
@@ -323,7 +280,7 @@ async function sendMenuInterativo(to) {
                   {
                     id: 'opcao_1',
                     title: 'Reteste cilindro GNV',
-                    description: 'Valores, documentos e prazo',
+                    description: 'Informações e documentos',
                   },
                   {
                     id: 'opcao_2',
@@ -342,26 +299,16 @@ async function sendMenuInterativo(to) {
                   },
                   {
                     id: 'opcao_5',
-                    title: 'Valores',
-                    description: 'Tabela de serviços',
-                  },
-                  {
-                    id: 'opcao_6',
                     title: 'Documentos',
                     description: 'O que precisa trazer',
                   },
                   {
-                    id: 'opcao_7',
-                    title: 'Prazo de entrega',
-                    description: 'Reteste e instalação',
-                  },
-                  {
-                    id: 'opcao_8',
+                    id: 'opcao_6',
                     title: 'Endereço e horário',
                     description: 'Localização da oficina',
                   },
                   {
-                    id: 'opcao_9',
+                    id: 'opcao_7',
                     title: 'Falar atendente',
                     description: 'Atendimento humano',
                   },
@@ -470,23 +417,23 @@ function extrairOpcao(message) {
   const textoMinusculo = text.toLowerCase();
 
   if (
-  textoMinusculo.includes('oi') ||
-  textoMinusculo.includes('olá') ||
-  textoMinusculo.includes('ola') ||
-  textoMinusculo.includes('menu') ||
-  textoMinusculo.includes('inicio') ||
-  textoMinusculo.includes('início') ||
-  textoMinusculo.includes('bom dia') ||
-  textoMinusculo.includes('boa tarde') ||
-  textoMinusculo.includes('boa noite') ||
-  textoMinusculo.includes('informação') ||
-  textoMinusculo.includes('informacoes') ||
-  textoMinusculo.includes('informações') ||
-  textoMinusculo.includes('atendimento') ||
-  textoMinusculo.includes('gnv')
-) {
-  return '';
-}
+    textoMinusculo.includes('oi') ||
+    textoMinusculo.includes('olá') ||
+    textoMinusculo.includes('ola') ||
+    textoMinusculo.includes('menu') ||
+    textoMinusculo.includes('inicio') ||
+    textoMinusculo.includes('início') ||
+    textoMinusculo.includes('bom dia') ||
+    textoMinusculo.includes('boa tarde') ||
+    textoMinusculo.includes('boa noite') ||
+    textoMinusculo.includes('informação') ||
+    textoMinusculo.includes('informacoes') ||
+    textoMinusculo.includes('informações') ||
+    textoMinusculo.includes('atendimento') ||
+    textoMinusculo.includes('gnv')
+  ) {
+    return '';
+  }
 
   return text.replace(/[^0-9]/g, '');
 }
@@ -654,7 +601,7 @@ app.post('/webhook', async (req, res) => {
       await sendConfirmacaoServico(from, servico, opcao);
     }
 
-    if (opcao === '9') {
+    if (opcao === '7') {
       console.log('📢 Avisando atendente...');
       await avisarAtendente(from, nomeCliente, 'Cliente solicitou atendimento humano.');
     }
