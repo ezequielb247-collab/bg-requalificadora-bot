@@ -89,7 +89,7 @@ async function montarResposta(opcao) {
   const valores = await carregarValores();
 
   if (opcao === '1') {
-    return `✅ RETESTE DE GNV
+    return `✅ RETESTE DE CILINDRO DE GNV
 
 Valor referente a 1 cilindro:
 
@@ -101,8 +101,8 @@ Valor referente a 1 cilindro:
 • Precisa estar no nome do último proprietário do veículo
 
 ⏱️ Prazo de entrega:
-• Trazendo o carro de manhã, entregamos no início da tarde.
-• Trazendo o carro à tarde, entregamos no final do dia.
+• Trazendo o carro de manhã, entregamos no final da tarde.
+• Trazendo o carro à tarde, entregamos no outro dia pela manhã.
 
 📍 Endereço:
 ${ENDERECO_OFICINA}
@@ -171,7 +171,7 @@ Para ver o menu novamente, envie: menu`;
   if (opcao === '5') {
     return `💰 VALORES DOS SERVIÇOS
 
-✅ Reteste de GNV:
+✅ Reteste de cilindro de GNV:
 • Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
 • À vista: ${formatarMoeda(valores.reteste_vista)}
 
@@ -201,7 +201,7 @@ Para ver o menu novamente, envie: menu`;
   if (opcao === '6') {
     return `📄 DOCUMENTOS NECESSÁRIOS
 
-Para reteste de GNV ou retirada de kit GNV, é necessário trazer:
+Para reteste de cilindro de GNV ou retirada de kit GNV, é necessário trazer:
 
 • Documento do carro ou documento do GNV
 • Precisa estar no nome do último proprietário do veículo
@@ -214,10 +214,12 @@ Para ver o menu novamente, envie: menu`;
   if (opcao === '7') {
     return `⏱️ PRAZO DE ENTREGA
 
-• Trazendo o carro de manhã, entregamos no início da tarde.
-• Trazendo o carro à tarde, entregamos no final do dia.
+✅ Reteste de cilindro de GNV:
+• Trazendo o carro de manhã, entregamos no final da tarde.
+• Trazendo o carro à tarde, entregamos no outro dia pela manhã.
 
-Para instalação de kit GNV, o prazo deve ser confirmado diretamente com o atendente.
+✅ Instalação de kit GNV:
+• O prazo deve ser confirmado diretamente com o atendente.
 
 Para ver o menu novamente, envie: menu`;
   }
@@ -320,7 +322,7 @@ async function sendMenuInterativo(to) {
                 rows: [
                   {
                     id: 'opcao_1',
-                    title: 'Reteste de GNV',
+                    title: 'Reteste cilindro GNV',
                     description: 'Valores, documentos e prazo',
                   },
                   {
@@ -351,7 +353,7 @@ async function sendMenuInterativo(to) {
                   {
                     id: 'opcao_7',
                     title: 'Prazo de entrega',
-                    description: 'Manhã ou tarde',
+                    description: 'Reteste e instalação',
                   },
                   {
                     id: 'opcao_8',
