@@ -2,7 +2,12 @@ require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
-const { getValores } = require('./services/sheets');
+
+const {
+  getValores,
+  salvarConversa,
+  buscarUltimasConversas,
+} = require('./services/sheets');
 
 const app = express();
 app.use(express.json());
@@ -14,7 +19,9 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 const ATENDENTE_NUMERO = process.env.ATENDENTE_NUMERO;
+
 const NOME_OFICINA = process.env.NOME_OFICINA || 'BG requalificadora';
+
 const ENDERECO_OFICINA =
   process.env.ENDERECO_OFICINA ||
   'Av. Carlos Augusto T. Garcia - Sol e Mar, Macaé - RJ, 27940-290';
@@ -212,7 +219,7 @@ Para ver o menu novamente, envie: menu`;
   if (opcao === '8') {
     return `👨‍🔧 ATENDIMENTO HUMANO
 
-Certo! Vou encaminhar sua mensagem para um atendente.
+Certo! Já avisei nossa equipe.
 
 Aguarde um momento, por favor.`;
   }
@@ -382,16 +389,49 @@ function extrairOpcao(message) {
   return text.replace(/[^0-9]/g, '');
 }
 
-async function avisarAtendente(clienteNumero, mensagemCliente) {
+function obterTextoCliente(message) {
+  return (
+    message.text?.body ||
+    message.interactive?.list_reply?.title ||
+    message.interactive?.button_reply?.title ||
+    ''
+  );
+}
+
+async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
   if (!ATENDENTE_NUMERO) {
     console.log('⚠️ ATENDENTE_NUMERO não configurado.');
     return;
   }
 
+  let historicoTexto = '';
+
+  try {
+    const ultimasConversas = await buscarUltimasConversas(clienteNumero, 8);
+
+    if (ultimasConversas.length > 0) {
+      historicoTexto = ultimasConversas
+        .map((item, index) => {
+          return `${index + 1}. ${item.mensagem || 'Sem mensagem'} ${
+            item.opcao ? `(opção: ${item.opcao})` : ''
+          }`;
+        })
+        .join('\n');
+    }
+  } catch (error) {
+    console.error('❌ Erro ao buscar histórico do cliente:', error.message);
+  }
+
   const texto = `🚨 Cliente pediu atendimento humano
 
-Número do cliente: ${clienteNumero}
-Mensagem enviada: ${mensagemCliente || 'Opção 8 - Falar com atendente'}
+👤 Nome: ${nomeCliente || 'Não informado'}
+📱 Número: ${clienteNumero}
+
+💬 Mensagem atual:
+${mensagemCliente || 'Opção 8 - Falar com atendente'}
+
+📌 Últimas interações:
+${historicoTexto || 'Nenhum histórico encontrado.'}
 
 Entre em contato com o cliente pelo WhatsApp.`;
 
@@ -436,16 +476,27 @@ app.post('/webhook', async (req, res) => {
     }
 
     const from = message.from;
+    const nomeCliente = value?.contacts?.[0]?.profile?.name || '';
     const opcao = extrairOpcao(message);
-    const textoCliente =
-      message.text?.body ||
-      message.interactive?.list_reply?.title ||
-      message.interactive?.button_reply?.title ||
-      '';
+    const textoCliente = obterTextoCliente(message);
 
     console.log('👤 Cliente:', from);
+    console.log('🏷️ Nome:', nomeCliente);
     console.log('💬 Mensagem:', textoCliente);
     console.log('🔢 Opção detectada:', opcao || 'menu');
+
+    try {
+      await salvarConversa({
+        numero: from,
+        nome: nomeCliente,
+        mensagem: textoCliente || 'menu',
+        opcao: opcao || 'menu',
+      });
+
+      console.log('✅ Conversa salva na planilha.');
+    } catch (error) {
+      console.error('❌ Erro ao salvar conversa na planilha:', error.message);
+    }
 
     if (!opcao) {
       console.log('📤 Enviando menu interativo...');
@@ -466,7 +517,8 @@ app.post('/webhook', async (req, res) => {
     console.log('✅ Resposta processada.');
 
     if (opcao === '8') {
-      await avisarAtendente(from, textoCliente);
+      console.log('📢 Avisando atendente...');
+      await avisarAtendente(from, nomeCliente, textoCliente);
     }
 
     return res.sendStatus(200);
