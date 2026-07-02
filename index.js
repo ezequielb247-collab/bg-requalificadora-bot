@@ -31,10 +31,10 @@ const LINK_MAPS =
   process.env.LINK_MAPS ||
   'https://www.google.com/maps/search/?api=1&query=Av.%20Carlos%20Augusto%20T.%20Garcia%2C%201618-B%20-%20Sol%20e%20Mar%2C%20Maca%C3%A9%20-%20RJ%2C%2027940-290';
 
-const HORARIO_OFICINA =
+const HORARIO_OFICINA = (
   process.env.HORARIO_OFICINA ||
-  'Segunda a sexta: 8:00 às 12:00 e 13:00 às 18:00\nSábado: 8:00 às 12:00';
-
+  'Segunda a sexta: 8:00 às 12:00 e 13:00 às 18:00\nSábado: 8:00 às 12:00'
+).replace(/\\n/g, '\n');
 // Guarda clientes que clicaram em "Tenho interesse" e ainda vão mandar dados do carro
 const atendimentosPendentes = {};
 
