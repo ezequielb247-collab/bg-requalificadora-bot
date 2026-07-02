@@ -1069,6 +1069,63 @@ function identificarOpcaoPorTexto(texto) {
   return null;
 }
 
+function extrairOpcao(message) {
+  if (message?.type === 'interactive') {
+    const listReplyId = message.interactive?.list_reply?.id;
+    const buttonReplyId = message.interactive?.button_reply?.id;
+    const id = listReplyId || buttonReplyId || '';
+
+    if (id.startsWith('opcao_')) {
+      return id.replace('opcao_', '');
+    }
+
+    if (id.startsWith('caminho_')) {
+      return id;
+    }
+
+    if (id.startsWith('interesse_')) {
+      return id;
+    }
+
+    return id.replace(/[^0-9]/g, '');
+  }
+
+  const text = message?.text?.body?.trim() || '';
+  const textoMinusculo = text.toLowerCase();
+
+  const somenteNumeros = text.replace(/[^0-9]/g, '');
+
+  if (['1', '2', '3', '4', '5', '6', '7'].includes(somenteNumeros)) {
+    return somenteNumeros;
+  }
+
+  const opcaoPorTexto = identificarOpcaoPorTexto(text);
+
+  if (opcaoPorTexto) {
+    return opcaoPorTexto;
+  }
+
+  if (
+    textoMinusculo === 'oi' ||
+    textoMinusculo === 'olá' ||
+    textoMinusculo === 'ola' ||
+    textoMinusculo === 'menu' ||
+    textoMinusculo === 'inicio' ||
+    textoMinusculo === 'início' ||
+    textoMinusculo === 'bom dia' ||
+    textoMinusculo === 'boa tarde' ||
+    textoMinusculo === 'boa noite' ||
+    textoMinusculo === 'gnv' ||
+    textoMinusculo.includes('informação') ||
+    textoMinusculo.includes('informacoes') ||
+    textoMinusculo.includes('informações')
+  ) {
+    return '';
+  }
+
+  return 'invalido';
+}
+
 function obterTextoCliente(message) {
   return (
     message.text?.body ||
