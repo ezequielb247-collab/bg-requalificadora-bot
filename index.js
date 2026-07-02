@@ -33,6 +33,9 @@ const HORARIO_OFICINA =
   process.env.HORARIO_OFICINA ||
   'Segunda a sexta: 8:00 às 18:00\nSábado: 8:00 às 12:00';
 
+// Guarda clientes que clicaram em "Tenho interesse" e ainda vão mandar dados do carro
+const atendimentosPendentes = {};
+
 function estaDentroDoHorario() {
   const agora = new Date();
 
@@ -316,7 +319,9 @@ async function sendMenuInterativo(to, mensagemInicial = null) {
 
   const textoBody =
     mensagemInicial ||
-    `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽\n\nToque no botão abaixo e escolha uma opção:`;
+    `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽
+
+Toque no botão abaixo e escolha uma opção:`;
 
   try {
     await axios.post(
@@ -766,10 +771,85 @@ Entre em contato com o cliente pelo WhatsApp.`;
   }
 }
 
+async function avisarDadosDoCarro(clienteNumero, nomeCliente, servico, dadosCarro) {
+  if (!ATENDENTE_NUMERO) {
+    console.log('⚠️ ATENDENTE_NUMERO não configurado.');
+    return;
+  }
+
+  const texto = `🚗 Cliente enviou dados do carro
+
+👤 Nome: ${nomeCliente || 'Não informado'}
+📱 Número: ${clienteNumero}
+
+✅ Serviço de interesse:
+${servico}
+
+🚘 Dados enviados:
+${dadosCarro}
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  const atendentes = ATENDENTE_NUMERO.split(',')
+    .map((numero) => numero.trim())
+    .filter(Boolean);
+
+  for (const atendente of atendentes) {
+    await sendTextMessage(atendente, texto);
+  }
+}
+
+async function processarDadosDoCarroSePendente(from, nomeCliente, textoCliente) {
+  const pendente = atendimentosPendentes[from];
+
+  if (!pendente) {
+    return false;
+  }
+
+  const texto = String(textoCliente || '').trim();
+  const textoMinusculo = texto.toLowerCase();
+
+  if (!texto) {
+    return false;
+  }
+
+  if (textoMinusculo === 'menu' || textoMinusculo === 'cancelar') {
+    delete atendimentosPendentes[from];
+
+    await sendTextMessage(
+      from,
+      'Tudo bem, atendimento cancelado. Para ver as opções novamente, envie: menu'
+    );
+
+    return true;
+  }
+
+  await sendTextMessage(
+    from,
+    `✅ Obrigado! Recebemos as informações do seu veículo.
+
+Serviço:
+${pendente.servico}
+
+Dados enviados:
+${texto}
+
+Nossa equipe vai analisar e te responder pelo WhatsApp.`
+  );
+
+  await avisarDadosDoCarro(from, nomeCliente, pendente.servico, texto);
+
+  delete atendimentosPendentes[from];
+
+  return true;
+}
+
 async function processarConfirmacaoServico(opcao, from, nomeCliente) {
   if (opcao.startsWith('caminho_')) {
     const opcaoServico = opcao.replace('caminho_', '');
     const servico = nomeServicoPorOpcao(opcaoServico);
+
+    delete atendimentosPendentes[from];
 
     await sendTextMessage(
       from,
@@ -803,6 +883,11 @@ ${HORARIO_OFICINA}`
     const opcaoServico = opcao.replace('interesse_', '');
     const servico = nomeServicoPorOpcao(opcaoServico);
 
+    atendimentosPendentes[from] = {
+      servico,
+      criadoEm: new Date().toISOString(),
+    };
+
     await sendTextMessage(
       from,
       `✅ Interesse registrado!
@@ -810,23 +895,23 @@ ${HORARIO_OFICINA}`
 Serviço:
 ${servico}
 
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.
+Para nossa equipe te atender melhor, envie por favor:
 
-📍 Endereço:
-${ENDERECO_OFICINA}
+1. Modelo do carro
+2. Ano do carro
+3. Qual serviço deseja fazer
 
-🗺️ Google Maps:
-${LINK_MAPS}
+Exemplo:
+Civic 2015, reteste de cilindro
 
-🕒 Horário:
-${HORARIO_OFICINA}`
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`
     );
 
     await avisarAcaoServico(
       from,
       nomeCliente,
       servico,
-      'Cliente clicou em "Tenho interesse".',
+      'Cliente clicou em "Tenho interesse" e o bot pediu modelo e ano do carro.',
       'Tenho interesse'
     );
 
@@ -872,26 +957,40 @@ app.post('/webhook', async (req, res) => {
 
     const from = message.from;
     const nomeCliente = value?.contacts?.[0]?.profile?.name || '';
-    const opcao = extrairOpcao(message);
     const textoCliente = obterTextoCliente(message);
 
     console.log('👤 Cliente:', from);
     console.log('🏷️ Nome:', nomeCliente);
     console.log('💬 Mensagem:', textoCliente);
-    console.log('🔢 Opção detectada:', opcao || 'menu');
 
     try {
       await salvarConversa({
         numero: from,
         nome: nomeCliente,
         mensagem: textoCliente || 'menu',
-        opcao: opcao || 'menu',
+        opcao: 'recebida',
       });
 
       console.log('✅ Conversa salva na planilha.');
     } catch (error) {
       console.error('❌ Erro ao salvar conversa na planilha:', error.message);
     }
+
+    if (message.type === 'text') {
+      const resolveuPendente = await processarDadosDoCarroSePendente(
+        from,
+        nomeCliente,
+        textoCliente
+      );
+
+      if (resolveuPendente) {
+        return res.sendStatus(200);
+      }
+    }
+
+    const opcao = extrairOpcao(message);
+
+    console.log('🔢 Opção detectada:', opcao || 'menu');
 
     const foraDoHorario = !estaDentroDoHorario();
 
@@ -919,7 +1018,9 @@ app.post('/webhook', async (req, res) => {
 
       const mensagemPadrao = foraDoHorario
         ? mensagemForaDoHorario()
-        : `Não entendi sua mensagem.\n\nToque no botão abaixo para ver as opções de atendimento:`;
+        : `Não entendi sua mensagem.
+
+Toque no botão abaixo para ver as opções de atendimento:`;
 
       await sendMenuInterativo(from, mensagemPadrao);
       return res.sendStatus(200);
