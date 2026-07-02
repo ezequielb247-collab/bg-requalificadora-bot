@@ -419,7 +419,11 @@ async function sendConfirmacaoServico(to, servico, opcaoServico) {
         interactive: {
           type: 'button',
           body: {
-            text: `Você deseja seguir com este serviço?\n\nServiço: ${servico}\n\nEscolha uma opção abaixo:`,
+            text: `Você deseja seguir com este serviço?
+
+Serviço: ${servico}
+
+Escolha uma opção abaixo:`,
           },
           action: {
             buttons: [
@@ -706,7 +710,7 @@ async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensa
     return;
   }
 
-  const texto = `🚨 Cliente demonstrou interesse
+  const texto = `🚨 Novo cliente interessado
 
 👤 Nome: ${nomeCliente || 'Não informado'}
 📱 Número: ${clienteNumero}
@@ -714,8 +718,42 @@ async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensa
 ✅ Serviço:
 ${servico}
 
-💬 Mensagem enviada pelo cliente:
+📌 Ação:
+Cliente pediu informações sobre este serviço.
+
+💬 Mensagem original:
 ${mensagemOriginal || 'Cliente selecionou o serviço pelo menu.'}
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  const atendentes = ATENDENTE_NUMERO.split(',')
+    .map((numero) => numero.trim())
+    .filter(Boolean);
+
+  for (const atendente of atendentes) {
+    await sendTextMessage(atendente, texto);
+  }
+}
+
+async function avisarAcaoServico(clienteNumero, nomeCliente, servico, acao, mensagemOriginal) {
+  if (!ATENDENTE_NUMERO) {
+    console.log('⚠️ ATENDENTE_NUMERO não configurado.');
+    return;
+  }
+
+  const texto = `🚨 Atualização de atendimento
+
+👤 Nome: ${nomeCliente || 'Não informado'}
+📱 Número: ${clienteNumero}
+
+✅ Serviço:
+${servico}
+
+📌 Ação:
+${acao}
+
+💬 Mensagem original:
+${mensagemOriginal || 'Cliente clicou em um botão do atendimento automático.'}
 
 Entre em contato com o cliente pelo WhatsApp.`;
 
@@ -735,19 +773,27 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
 
     await sendTextMessage(
       from,
-      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.
+      `✅ Confirmado! Estamos te esperando.
+
+Serviço:
+${servico}
 
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
 🗺️ Abrir no Google Maps:
-${LINK_MAPS}`
+${LINK_MAPS}
+
+🕒 Horário:
+${HORARIO_OFICINA}`
     );
 
-    await avisarAtendente(
+    await avisarAcaoServico(
       from,
       nomeCliente,
-      `✅ Serviço: ${servico}\n📌 Ação: Cliente informou que está a caminho.`
+      servico,
+      'Cliente clicou em "Estou a caminho".',
+      'Estou a caminho'
     );
 
     return true;
@@ -759,13 +805,29 @@ ${LINK_MAPS}`
 
     await sendTextMessage(
       from,
-      `✅ Certo! Nossa equipe foi avisada sobre seu interesse em: ${servico}.\n\nAguarde um momento, por favor.`
+      `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}
+
+🕒 Horário:
+${HORARIO_OFICINA}`
     );
 
-    await avisarAtendente(
+    await avisarAcaoServico(
       from,
       nomeCliente,
-      `✅ Serviço de interesse: ${servico}\n📌 Ação: Cliente demonstrou interesse.`
+      servico,
+      'Cliente clicou em "Tenho interesse".',
+      'Tenho interesse'
     );
 
     return true;
