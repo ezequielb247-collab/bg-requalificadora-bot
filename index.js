@@ -145,6 +145,187 @@ function nomeServicoPorOpcao(opcao) {
   return servicos[opcao] || 'Serviço';
 }
 
+function mensagemPedidoDadosPorServico(opcaoServico, servico) {
+  if (opcaoServico === '1') {
+    return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Quantidade de cilindros, se souber
+3. Se o cilindro já está vencido ou perto de vencer, se souber
+
+Exemplo:
+Civic 2015, 1 cilindro, vencendo esse mês
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
+  }
+
+  if (opcaoServico === '2') {
+    return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se o kit é 3ª ou 5ª geração, se souber
+
+Exemplo:
+Palio 2014, kit 5ª geração
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
+  }
+
+  if (opcaoServico === '3') {
+    return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se o kit é 3ª ou 5ª geração, se souber
+
+Exemplo:
+Onix 2018, kit 5ª geração
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
+  }
+
+  if (opcaoServico === '4') {
+    return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se será instalação nova ou se já possui algum kit
+
+Exemplo:
+HB20 2020, instalação nova
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
+  }
+
+  return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Envie o modelo e ano do carro para nossa equipe te atender melhor.`;
+}
+
+function mensagemDadosRecebidos(opcaoServico, servico, dadosCarro) {
+  if (opcaoServico === '1') {
+    return `✅ Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+Enquanto isso, deixe separado se possível:
+
+• Documento do carro
+• Documento do GNV, se tiver
+• Informação da quantidade de cilindros, se souber
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}`;
+  }
+
+  if (opcaoServico === '2') {
+    return `✅ Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+Enquanto isso, deixe separado se possível:
+
+• Documento do carro
+• Documento do GNV, se tiver
+• Informação se o kit é 3ª ou 5ª geração, se souber
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}`;
+  }
+
+  if (opcaoServico === '3') {
+    return `✅ Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+Enquanto isso, deixe separado se possível:
+
+• Documento do carro
+• Informação se o kit é 3ª ou 5ª geração, se souber
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}`;
+  }
+
+  if (opcaoServico === '4') {
+    return `✅ Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+Nossa equipe vai analisar o veículo e orientar sobre valores, documentos e prazo.
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}`;
+  }
+
+  return `✅ Informações recebidas!
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+Nossa equipe vai te chamar pelo WhatsApp.`;
+}
+
 async function montarResposta(opcao) {
   const valores = await carregarValores();
 
@@ -777,7 +958,7 @@ async function avisarDadosDoCarro(clienteNumero, nomeCliente, servico, dadosCarr
     return;
   }
 
-  const texto = `🚗 Cliente enviou dados do carro
+  const texto = `🚗 Cliente enviou dados do veículo
 
 👤 Nome: ${nomeCliente || 'Não informado'}
 📱 Número: ${clienteNumero}
@@ -787,6 +968,9 @@ ${servico}
 
 🚘 Dados enviados:
 ${dadosCarro}
+
+📌 Próximo passo:
+Chamar o cliente e confirmar valor, prazo e documentos necessários.
 
 Entre em contato com o cliente pelo WhatsApp.`;
 
@@ -826,15 +1010,7 @@ async function processarDadosDoCarroSePendente(from, nomeCliente, textoCliente) 
 
   await sendTextMessage(
     from,
-    `✅ Obrigado! Recebemos as informações do seu veículo.
-
-Serviço:
-${pendente.servico}
-
-Dados enviados:
-${texto}
-
-Nossa equipe vai analisar e te responder pelo WhatsApp.`
+    mensagemDadosRecebidos(pendente.opcaoServico, pendente.servico, texto)
   );
 
   await avisarDadosDoCarro(from, nomeCliente, pendente.servico, texto);
@@ -885,33 +1061,20 @@ ${HORARIO_OFICINA}`
 
     atendimentosPendentes[from] = {
       servico,
+      opcaoServico,
       criadoEm: new Date().toISOString(),
     };
 
     await sendTextMessage(
       from,
-      `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo do carro
-2. Ano do carro
-3. Qual serviço deseja fazer
-
-Exemplo:
-Civic 2015, reteste de cilindro
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`
+      mensagemPedidoDadosPorServico(opcaoServico, servico)
     );
 
     await avisarAcaoServico(
       from,
       nomeCliente,
       servico,
-      'Cliente clicou em "Tenho interesse" e o bot pediu modelo e ano do carro.',
+      'Cliente clicou em "Tenho interesse" e o bot pediu as informações corretas do veículo.',
       'Tenho interesse'
     );
 
