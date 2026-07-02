@@ -29,6 +29,52 @@ const HORARIO_OFICINA =
   process.env.HORARIO_OFICINA ||
   'Segunda a sexta: 8:00 às 18:00\nSábado: 8:00 às 12:00';
 
+function estaDentroDoHorario() {
+  const agora = new Date();
+
+  const dataBrasil = new Date(
+    agora.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+  );
+
+  const diaSemana = dataBrasil.getDay();
+  const hora = dataBrasil.getHours();
+  const minuto = dataBrasil.getMinutes();
+
+  const horarioAtual = hora * 60 + minuto;
+
+  const oitoHoras = 8 * 60;
+  const meioDia = 12 * 60;
+  const dezoitoHoras = 18 * 60;
+
+  // Domingo
+  if (diaSemana === 0) {
+    return false;
+  }
+
+  // Segunda a sexta
+  if (diaSemana >= 1 && diaSemana <= 5) {
+    return horarioAtual >= oitoHoras && horarioAtual < dezoitoHoras;
+  }
+
+  // Sábado
+  if (diaSemana === 6) {
+    return horarioAtual >= oitoHoras && horarioAtual < meioDia;
+  }
+
+  return false;
+}
+
+function mensagemForaDoHorario() {
+  return `Olá! Recebemos sua mensagem ✅
+
+No momento estamos fora do horário de atendimento.
+
+🕒 Horário de funcionamento:
+${HORARIO_OFICINA}
+
+Mesmo assim, você pode ver as opções abaixo e nossa equipe responderá assim que possível.`;
+}
+
 function normalizarNumero(valor, padrao) {
   if (valor === undefined || valor === null || valor === '') {
     return padrao;
@@ -761,6 +807,14 @@ app.post('/webhook', async (req, res) => {
       console.error('❌ Erro ao salvar conversa na planilha:', error.message);
     }
 
+    const foraDoHorario = !estaDentroDoHorario();
+
+    if (foraDoHorario && !opcao) {
+      console.log('🌙 Cliente chamou fora do horário. Enviando aviso + menu...');
+      await sendMenuInterativo(from, mensagemForaDoHorario());
+      return res.sendStatus(200);
+    }
+
     if (opcao && (opcao.startsWith('caminho_') || opcao.startsWith('interesse_'))) {
       await processarConfirmacaoServico(opcao, from, nomeCliente);
       return res.sendStatus(200);
@@ -776,14 +830,24 @@ app.post('/webhook', async (req, res) => {
 
     if (!resposta) {
       console.log('📤 Mensagem não entendida. Enviando menu interativo...');
-      await sendMenuInterativo(
-        from,
-        `Não entendi sua mensagem.\n\nToque no botão abaixo para ver as opções de atendimento:`
-      );
+
+      const mensagemPadrao = foraDoHorario
+        ? mensagemForaDoHorario()
+        : `Não entendi sua mensagem.\n\nToque no botão abaixo para ver as opções de atendimento:`;
+
+      await sendMenuInterativo(from, mensagemPadrao);
       return res.sendStatus(200);
     }
 
     console.log('📤 Enviando resposta...');
+
+    if (foraDoHorario) {
+      await sendTextMessage(
+        from,
+        `Estamos fora do horário de atendimento no momento, mas sua solicitação foi recebida ✅\n\nNossa equipe responderá assim que possível.\n\n🕒 Horário:\n${HORARIO_OFICINA}`
+      );
+    }
+
     await sendTextMessage(from, resposta);
     console.log('✅ Resposta processada.');
 
