@@ -19,11 +19,11 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 const ATENDENTE_NUMERO = process.env.ATENDENTE_NUMERO;
 
-const NOME_OFICINA = process.env.NOME_OFICINA || 'BG requalificadora';
+const NOME_OFICINA = process.env.NOME_OFICINA || 'BG GNV Macaé';
 
 const ENDERECO_OFICINA =
   process.env.ENDERECO_OFICINA ||
-  'Av. Carlos Augusto T. Garcia - Sol e Mar, Macaé - RJ, 27940-290';
+  'Endereço: Av. Carlos Augusto T. Garcia, nº 1618 — Sol e Mar, Macaé - RJ, CEP 27940-290';
 
 const HORARIO_OFICINA =
   process.env.HORARIO_OFICINA ||
@@ -114,8 +114,7 @@ Valor referente a 1 cilindro:
 • Trazendo o carro de manhã, entregamos no final da tarde.
 • Trazendo o carro à tarde, entregamos no outro dia pela manhã.
 
-📍 Endereço:
-${ENDERECO_OFICINA}
+📍 ${ENDERECO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -132,8 +131,7 @@ Valores:
 • Documento do carro ou documento do GNV
 • Precisa estar no nome do último proprietário do veículo
 
-📍 Endereço:
-${ENDERECO_OFICINA}
+📍 ${ENDERECO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -151,8 +149,7 @@ Valores:
 💳 Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
 💵 À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
 
-📍 Endereço:
-${ENDERECO_OFICINA}
+📍 ${ENDERECO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -164,8 +161,7 @@ O valor da instalação é negociado diretamente com o atendente, pois pode vari
 
 👨‍🔧 Nossa equipe pode te orientar melhor sobre valores, documentos e prazo.
 
-📍 Endereço:
-${ENDERECO_OFICINA}`;
+📍 ${ENDERECO_OFICINA}`;
   }
 
   if (opcao === '5') {
@@ -186,8 +182,7 @@ Para ver o menu novamente, envie: menu`;
 
 ${NOME_OFICINA}
 
-📍 Endereço:
-${ENDERECO_OFICINA}
+📍 ${ENDERECO_OFICINA}
 
 🕒 Horário de funcionamento:
 ${HORARIO_OFICINA}
@@ -263,7 +258,7 @@ async function sendMenuInterativo(to) {
           type: 'list',
           header: {
             type: 'text',
-            text: 'BG requalificadora',
+            text: 'BG GNV Macaé',
           },
           body: {
             text: `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽\n\nToque no botão abaixo e escolha uma opção:`,
@@ -479,7 +474,7 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
 
     await sendTextMessage(
       from,
-      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.\n\n📍 Endereço:\n${ENDERECO_OFICINA}`
+      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.\n\n📍 ${ENDERECO_OFICINA}`
     );
 
     await avisarAtendente(
@@ -513,7 +508,7 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
 }
 
 app.get('/', (req, res) => {
-  res.send('Bot BG Requalificadora online ✅');
+  res.send('Bot BG GNV Macaé online ✅');
 });
 
 app.get('/webhook', (req, res) => {
