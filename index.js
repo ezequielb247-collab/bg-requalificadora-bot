@@ -403,7 +403,6 @@ function textoTemAlgumaPalavra(texto, palavras) {
 function identificarOpcaoPorTexto(texto) {
   const textoMinusculo = texto.toLowerCase();
 
-  // 1 - Reteste de cilindro GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'reteste',
@@ -423,7 +422,6 @@ function identificarOpcaoPorTexto(texto) {
     return '1';
   }
 
-  // 2 - Retirada de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'retirada',
@@ -444,7 +442,6 @@ function identificarOpcaoPorTexto(texto) {
     return '2';
   }
 
-  // 3 - Revisão de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'revisão',
@@ -469,7 +466,6 @@ function identificarOpcaoPorTexto(texto) {
     return '3';
   }
 
-  // 4 - Instalação de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'instalação',
@@ -490,7 +486,6 @@ function identificarOpcaoPorTexto(texto) {
     return '4';
   }
 
-  // 5 - Documentos
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'documento',
@@ -508,7 +503,6 @@ function identificarOpcaoPorTexto(texto) {
     return '5';
   }
 
-  // 6 - Endereço e horário
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'endereço',
@@ -530,7 +524,6 @@ function identificarOpcaoPorTexto(texto) {
     return '6';
   }
 
-  // 7 - Falar com atendente
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'atendente',
@@ -578,19 +571,16 @@ function extrairOpcao(message) {
   const text = message?.text?.body?.trim() || '';
   const textoMinusculo = text.toLowerCase();
 
-  // Se a pessoa digitar apenas um número, usa como opção do menu
   const somenteNumeros = text.replace(/[^0-9]/g, '');
   if (['1', '2', '3', '4', '5', '6', '7'].includes(somenteNumeros)) {
     return somenteNumeros;
   }
 
-  // Tenta entender frases do cliente
   const opcaoPorTexto = identificarOpcaoPorTexto(text);
   if (opcaoPorTexto) {
     return opcaoPorTexto;
   }
 
-  // Mensagens que devem abrir o menu
   if (
     textoMinusculo === 'oi' ||
     textoMinusculo === 'olá' ||
@@ -609,7 +599,6 @@ function extrairOpcao(message) {
     return '';
   }
 
-  // Se não entender, retorna algo inválido para cair na mensagem padrão
   return 'invalido';
 }
 
@@ -635,6 +624,34 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
 
 💬 Situação:
 ${mensagemCliente || 'Cliente solicitou atendimento'}
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  const atendentes = ATENDENTE_NUMERO.split(',')
+    .map((numero) => numero.trim())
+    .filter(Boolean);
+
+  for (const atendente of atendentes) {
+    await sendTextMessage(atendente, texto);
+  }
+}
+
+async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensagemOriginal) {
+  if (!ATENDENTE_NUMERO) {
+    console.log('⚠️ ATENDENTE_NUMERO não configurado.');
+    return;
+  }
+
+  const texto = `🚨 Cliente demonstrou interesse
+
+👤 Nome: ${nomeCliente || 'Não informado'}
+📱 Número: ${clienteNumero}
+
+✅ Serviço:
+${servico}
+
+💬 Mensagem enviada pelo cliente:
+${mensagemOriginal || 'Cliente selecionou o serviço pelo menu.'}
 
 Entre em contato com o cliente pelo WhatsApp.`;
 
@@ -772,6 +789,10 @@ app.post('/webhook', async (req, res) => {
 
     if (['1', '2', '3', '4'].includes(opcao)) {
       const servico = nomeServicoPorOpcao(opcao);
+
+      console.log('📢 Avisando atendente sobre interesse no serviço...');
+      await avisarInteresseServico(from, nomeCliente, servico, textoCliente);
+
       console.log('📤 Enviando confirmação do serviço...');
       await sendConfirmacaoServico(from, servico, opcao);
     }
