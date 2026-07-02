@@ -7,6 +7,7 @@ const {
   getValores,
   salvarConversa,
   salvarLead,
+  gerarRelatorioLeads,
 } = require('./services/sheets');
 
 const app = express();
@@ -36,6 +37,9 @@ const HORARIO_OFICINA =
 
 // Guarda clientes que clicaram em "Tenho interesse" e ainda vão mandar dados do carro
 const atendimentosPendentes = {};
+
+// Guarda últimas mensagens para evitar resposta duplicada
+const ultimasMensagens = {};
 
 function estaDentroDoHorario() {
   const agora = new Date();
@@ -78,6 +82,106 @@ No momento estamos fora do horário de atendimento.
 ${HORARIO_OFICINA}
 
 Mesmo assim, você pode ver as opções abaixo e nossa equipe responderá assim que possível.`;
+}
+
+function normalizarTexto(texto) {
+  return String(texto || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function ehMensagemDuplicada(numero, texto) {
+  const agora = Date.now();
+  const textoNormalizado = normalizarTexto(texto);
+
+  if (!textoNormalizado) return false;
+
+  const ultima = ultimasMensagens[numero];
+
+  if (
+    ultima &&
+    ultima.texto === textoNormalizado &&
+    agora - ultima.horario < 15000
+  ) {
+    return true;
+  }
+
+  ultimasMensagens[numero] = {
+    texto: textoNormalizado,
+    horario: agora,
+  };
+
+  return false;
+}
+
+function ehAtendente(numero) {
+  if (!ATENDENTE_NUMERO) return false;
+
+  const atendentes = ATENDENTE_NUMERO.split(',')
+    .map((n) => n.trim())
+    .filter(Boolean);
+
+  return atendentes.includes(numero);
+}
+
+function ehPedidoRelatorio(texto) {
+  const t = normalizarTexto(texto);
+
+  return (
+    t === 'relatorio' ||
+    t === 'relatorio leads' ||
+    t === 'leads' ||
+    t === 'resumo leads' ||
+    t === 'relatorio de leads'
+  );
+}
+
+function formatarObjetoContagem(objeto) {
+  const entradas = Object.entries(objeto || {});
+
+  if (entradas.length === 0) {
+    return 'Nenhum registro.';
+  }
+
+  return entradas
+    .map(([nome, quantidade]) => `• ${nome}: ${quantidade}`)
+    .join('\n');
+}
+
+async function enviarRelatorioLeads(numero) {
+  try {
+    const relatorio = await gerarRelatorioLeads();
+
+    const texto = `📊 RELATÓRIO DE LEADS
+
+Total de leads:
+${relatorio.total}
+
+Leads hoje:
+${relatorio.hoje}
+
+Leads nos últimos 7 dias:
+${relatorio.ultimos7Dias}
+
+✅ Por serviço:
+${formatarObjetoContagem(relatorio.porServico)}
+
+📌 Por status:
+${formatarObjetoContagem(relatorio.porStatus)}
+
+Para atualizar o status, altere manualmente na aba Leads da planilha.`;
+
+    await sendTextMessage(numero, texto);
+  } catch (error) {
+    console.error('❌ Erro ao gerar relatório de leads:', error.message);
+
+    await sendTextMessage(
+      numero,
+      'Não consegui gerar o relatório agora. Confira se a aba Leads existe e se a planilha está compartilhada com a conta de serviço.'
+    );
+  }
 }
 
 function normalizarNumero(valor, padrao) {
@@ -502,6 +606,15 @@ async function sendMenuInterativo(to, mensagemInicial = null) {
   const textoBody =
     mensagemInicial ||
     `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽
+
+Somos especializados em serviços de GNV em Macaé-RJ.
+
+Aqui você pode consultar:
+✅ Reteste de cilindro GNV
+✅ Retirada de kit GNV
+✅ Revisão de kit GNV
+✅ Instalação de kit GNV
+✅ Documentos, endereço e horário
 
 Toque no botão abaixo e escolha uma opção:`;
 
@@ -1135,6 +1248,17 @@ app.post('/webhook', async (req, res) => {
     const from = message.from;
     const nomeCliente = value?.contacts?.[0]?.profile?.name || '';
     const textoCliente = obterTextoCliente(message);
+
+    if (ehMensagemDuplicada(from, textoCliente)) {
+      console.log('⚠️ Mensagem duplicada ignorada:', from);
+      return res.sendStatus(200);
+    }
+
+    if (ehAtendente(from) && ehPedidoRelatorio(textoCliente)) {
+      console.log('📊 Atendente pediu relatório de leads.');
+      await enviarRelatorioLeads(from);
+      return res.sendStatus(200);
+    }
 
     console.log('👤 Cliente:', from);
     console.log('🏷️ Nome:', nomeCliente);

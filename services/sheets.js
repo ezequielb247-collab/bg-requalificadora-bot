@@ -106,9 +106,86 @@ async function buscarUltimasConversas(numero, limite = 8) {
   });
 }
 
+function converterDataBrasilParaDate(dataTexto) {
+  if (!dataTexto) return null;
+
+  const partes = String(dataTexto).split(',');
+  const dataParte = partes[0]?.trim();
+
+  if (!dataParte) return null;
+
+  const [dia, mes, ano] = dataParte.split('/').map(Number);
+
+  if (!dia || !mes || !ano) return null;
+
+  return new Date(ano, mes - 1, dia);
+}
+
+async function gerarRelatorioLeads() {
+  const sheets = await getSheetsClient();
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Leads!A:F',
+  });
+
+  const rows = response.data.values || [];
+  const leads = rows.slice(1);
+
+  const hojeBrasil = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })
+  );
+
+  const hojeInicio = new Date(
+    hojeBrasil.getFullYear(),
+    hojeBrasil.getMonth(),
+    hojeBrasil.getDate()
+  );
+
+  const seteDiasAtras = new Date(hojeInicio);
+  seteDiasAtras.setDate(seteDiasAtras.getDate() - 6);
+
+  let total = leads.length;
+  let hoje = 0;
+  let ultimos7Dias = 0;
+
+  const porServico = {};
+  const porStatus = {};
+
+  for (const linha of leads) {
+    const dataHora = linha[0] || '';
+    const servico = linha[3] || 'Não informado';
+    const status = linha[5] || 'Novo';
+
+    const dataLead = converterDataBrasilParaDate(dataHora);
+
+    if (dataLead) {
+      if (dataLead.getTime() === hojeInicio.getTime()) {
+        hoje++;
+      }
+
+      if (dataLead >= seteDiasAtras && dataLead <= hojeInicio) {
+        ultimos7Dias++;
+      }
+    }
+
+    porServico[servico] = (porServico[servico] || 0) + 1;
+    porStatus[status] = (porStatus[status] || 0) + 1;
+  }
+
+  return {
+    total,
+    hoje,
+    ultimos7Dias,
+    porServico,
+    porStatus,
+  };
+}
+
 module.exports = {
   getValores,
   salvarConversa,
   salvarLead,
   buscarUltimasConversas,
+  gerarRelatorioLeads,
 };
