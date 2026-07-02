@@ -142,6 +142,35 @@ function ehPedidoRelatorio(texto) {
   );
 }
 
+function ehPedidoValoresGerais(texto) {
+  const t = normalizarTexto(texto);
+
+  return (
+    t === 'valores' ||
+    t === 'precos' ||
+    t === 'tabela' ||
+    t === 'tabela de precos' ||
+    t === 'valor dos servicos' ||
+    t === 'preco dos servicos' ||
+    t === 'quanto custa os servicos' ||
+    t === 'me passa os valores' ||
+    t === 'manda os valores' ||
+    t === 'quais os valores' ||
+    t === 'quais sao os valores' ||
+    t.includes('tabela de preco') ||
+    t.includes('tabela de valor') ||
+    t.includes('lista de preco') ||
+    t.includes('lista de valor') ||
+    t.includes('me passa a tabela') ||
+    t.includes('manda a tabela') ||
+    t.includes('quanto custa todos') ||
+    t.includes('quanto custa os servicos') ||
+    t.includes('preco dos servicos') ||
+    t.includes('valor dos servicos') ||
+    t.includes('valores dos servicos')
+  );
+}
+
 function formatarObjetoContagem(objeto) {
   const entradas = Object.entries(objeto || {});
 
@@ -533,6 +562,48 @@ Nossa equipe vai te chamar pelo WhatsApp.`;
 
 async function montarResposta(opcao) {
   const valores = await carregarValores();
+
+  if (opcao === 'valores') {
+    return `💰 TABELA DE VALORES
+
+✅ Reteste de cilindro GNV
+💳 Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.reteste_vista)}
+
+✅ Retirada de kit GNV
+• Kit 5ª geração: ${formatarMoeda(valores.retirada_kit_5)}
+• Kit 3ª geração: ${formatarMoeda(valores.retirada_kit_3)}
+
+✅ Revisão de kit GNV
+
+3ª geração:
+💳 Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.revisao_kit_3_vista)}
+
+5ª geração:
+💳 Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
+
+✅ Limpeza de bico
+💳 Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.limpeza_bico_vista)}
+
+✅ Limpeza do sistema de arrefecimento
+Serviço com máquina e aditivo incluso.
+💳 Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
+
+✅ Instalação de kit GNV
+O valor é negociado diretamente com o atendente, pois varia conforme o veículo, tipo de kit e condições de instalação.
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
+
+Para ver o menu, envie: menu`;
+  }
 
   if (opcao === '1') {
     return `✅ RETESTE DE CILINDRO DE GNV
@@ -1279,6 +1350,10 @@ function extrairOpcao(message) {
 
   if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(somenteNumeros)) {
     return somenteNumeros;
+  }
+
+  if (ehPedidoValoresGerais(text)) {
+    return 'valores';
   }
 
   const opcaoPorTexto = identificarOpcaoPorTexto(text);
