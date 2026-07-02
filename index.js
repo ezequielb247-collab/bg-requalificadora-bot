@@ -1361,10 +1361,10 @@ function extrairOpcao(message) {
   const text = message?.text?.body?.trim() || '';
   const textoMinusculo = text.toLowerCase();
 
-  const somenteNumeros = text.replace(/[^0-9]/g, '');
-
-  if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(somenteNumeros)) {
-    return somenteNumeros;
+  // Só entende como opção numérica se o cliente mandar apenas o número.
+  // Exemplo: "3"
+  if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(text)) {
+    return text;
   }
 
   if (ehPedidoValoresGerais(text)) {
