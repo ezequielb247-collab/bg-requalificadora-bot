@@ -25,15 +25,15 @@ const NOME_OFICINA = process.env.NOME_OFICINA || 'BG GNV Macaé';
 
 const ENDERECO_OFICINA =
   process.env.ENDERECO_OFICINA ||
-  'Av. Carlos Augusto T. Garcia, nº 1618 — Sol e Mar, Macaé - RJ, CEP 27940-290';
+  'Av. Carlos Augusto T. Garcia, nº 1618-B — Sol e Mar, Macaé - RJ, CEP 27940-290';
 
 const LINK_MAPS =
   process.env.LINK_MAPS ||
-  'https://www.google.com/maps?q=-22.3914399,-41.7426833';
+  'https://www.google.com/maps/search/?api=1&query=Av.%20Carlos%20Augusto%20T.%20Garcia%2C%201618-B%20-%20Sol%20e%20Mar%2C%20Maca%C3%A9%20-%20RJ%2C%2027940-290';
 
 const HORARIO_OFICINA =
   process.env.HORARIO_OFICINA ||
-  'Segunda a sexta: 8:00 às 18:00\nSábado: 8:00 às 12:00';
+  'Segunda a sexta: 8:00 às 12:00 e 13:00 às 18:00\nSábado: 8:00 às 12:00';
 
 // Guarda clientes que clicaram em "Tenho interesse" e ainda vão mandar dados do carro
 const atendimentosPendentes = {};
@@ -56,6 +56,7 @@ function estaDentroDoHorario() {
 
   const oitoHoras = 8 * 60;
   const meioDia = 12 * 60;
+  const trezeHoras = 13 * 60;
   const dezoitoHoras = 18 * 60;
 
   if (diaSemana === 0) {
@@ -63,7 +64,10 @@ function estaDentroDoHorario() {
   }
 
   if (diaSemana >= 1 && diaSemana <= 5) {
-    return horarioAtual >= oitoHoras && horarioAtual < dezoitoHoras;
+    const periodoManha = horarioAtual >= oitoHoras && horarioAtual < meioDia;
+    const periodoTarde = horarioAtual >= trezeHoras && horarioAtual < dezoitoHoras;
+
+    return periodoManha || periodoTarde;
   }
 
   if (diaSemana === 6) {
@@ -216,12 +220,26 @@ async function carregarValores() {
     return {
       reteste_cartao: normalizarNumero(valores.reteste_cartao, 480),
       reteste_vista: normalizarNumero(valores.reteste_vista, 450),
+
       retirada_kit_5: normalizarNumero(valores.retirada_kit_5, 500),
       retirada_kit_3: normalizarNumero(valores.retirada_kit_3, 400),
+
       revisao_kit_3_cartao: normalizarNumero(valores.revisao_kit_3_cartao, 280),
       revisao_kit_3_vista: normalizarNumero(valores.revisao_kit_3_vista, 250),
       revisao_kit_5_cartao: normalizarNumero(valores.revisao_kit_5_cartao, 430),
       revisao_kit_5_vista: normalizarNumero(valores.revisao_kit_5_vista, 400),
+
+      limpeza_bico_cartao: normalizarNumero(valores.limpeza_bico_cartao, 180),
+      limpeza_bico_vista: normalizarNumero(valores.limpeza_bico_vista, 150),
+
+      limpeza_arrefecimento_cartao: normalizarNumero(
+        valores.limpeza_arrefecimento_cartao,
+        330
+      ),
+      limpeza_arrefecimento_vista: normalizarNumero(
+        valores.limpeza_arrefecimento_vista,
+        300
+      ),
     };
   } catch (error) {
     console.error('❌ Erro ao carregar valores da planilha:', error.message);
@@ -229,12 +247,20 @@ async function carregarValores() {
     return {
       reteste_cartao: 480,
       reteste_vista: 450,
+
       retirada_kit_5: 500,
       retirada_kit_3: 400,
+
       revisao_kit_3_cartao: 280,
       revisao_kit_3_vista: 250,
       revisao_kit_5_cartao: 430,
       revisao_kit_5_vista: 400,
+
+      limpeza_bico_cartao: 180,
+      limpeza_bico_vista: 150,
+
+      limpeza_arrefecimento_cartao: 330,
+      limpeza_arrefecimento_vista: 300,
     };
   }
 }
@@ -245,6 +271,8 @@ function nomeServicoPorOpcao(opcao) {
     '2': 'Retirada de kit GNV',
     '3': 'Revisão de kit GNV',
     '4': 'Instalação de kit GNV',
+    '5': 'Limpeza de bico',
+    '6': 'Limpeza do sistema de arrefecimento',
   };
 
   return servicos[opcao] || 'Serviço';
@@ -316,6 +344,40 @@ Para nossa equipe te atender melhor, envie por favor:
 
 Exemplo:
 HB20 2020, instalação nova
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
+  }
+
+  if (opcaoServico === '5') {
+    return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se deseja limpeza preventiva ou se o carro está com falha, se souber
+
+Exemplo:
+Onix 2018, limpeza preventiva
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
+  }
+
+  if (opcaoServico === '6') {
+    return `✅ Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se o carro está baixando água, aquecendo ou se é limpeza preventiva, se souber
+
+Exemplo:
+Civic 2015, limpeza preventiva do arrefecimento
 
 Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`;
   }
@@ -412,6 +474,44 @@ Dados enviados:
 ${dadosCarro}
 
 Nossa equipe vai analisar o veículo e orientar sobre valores, documentos e prazo.
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}`;
+  }
+
+  if (opcaoServico === '5') {
+    return `✅ Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Google Maps:
+${LINK_MAPS}`;
+  }
+
+  if (opcaoServico === '6') {
+    return `✅ Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+A limpeza do sistema de arrefecimento é feita com máquina e já inclui o aditivo.
 
 📍 Endereço:
 ${ENDERECO_OFICINA}
@@ -517,6 +617,42 @@ ${LINK_MAPS}`;
   }
 
   if (opcao === '5') {
+    return `✅ LIMPEZA DE BICO
+
+Valores:
+
+💳 Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.limpeza_bico_vista)}
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === '6') {
+    return `✅ LIMPEZA DO SISTEMA DE ARREFECIMENTO
+
+Serviço feito com máquina e com aditivo já incluso.
+
+Valores:
+
+💳 Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === '7') {
     return `📄 DOCUMENTOS NECESSÁRIOS
 
 Para reteste de cilindro de GNV ou retirada de kit GNV, é necessário trazer:
@@ -529,7 +665,7 @@ Para instalação de kit GNV, fale com o atendente para receber a orientação c
 Para ver o menu novamente, envie: menu`;
   }
 
-  if (opcao === '6') {
+  if (opcao === '8') {
     return `📍 ENDEREÇO E HORÁRIO
 
 ${NOME_OFICINA}
@@ -548,7 +684,7 @@ Para realizar o serviço, basta trazer o carro até a oficina.
 Para ver o menu novamente, envie: menu`;
   }
 
-  if (opcao === '7') {
+  if (opcao === '9') {
     return `👨‍🔧 ATENDIMENTO HUMANO
 
 Certo! Já avisei nossa equipe.
@@ -607,14 +743,7 @@ async function sendMenuInterativo(to, mensagemInicial = null) {
     mensagemInicial ||
     `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽
 
-Somos especializados em serviços de GNV em Macaé-RJ.
-
-Aqui você pode consultar:
-✅ Reteste de cilindro GNV
-✅ Retirada de kit GNV
-✅ Revisão de kit GNV
-✅ Instalação de kit GNV
-✅ Documentos, endereço e horário
+Somos especializados em serviços automotivos e GNV em Macaé-RJ.
 
 Toque no botão abaixo e escolha uma opção:`;
 
@@ -665,16 +794,26 @@ Toque no botão abaixo e escolha uma opção:`;
                   },
                   {
                     id: 'opcao_5',
+                    title: 'Limpeza de bico',
+                    description: 'A partir de R$ 180',
+                  },
+                  {
+                    id: 'opcao_6',
+                    title: 'Limpeza arrefecimento',
+                    description: 'Com máquina e aditivo',
+                  },
+                  {
+                    id: 'opcao_7',
                     title: 'Documentos',
                     description: 'O que precisa trazer',
                   },
                   {
-                    id: 'opcao_6',
+                    id: 'opcao_8',
                     title: 'Endereço e horário',
                     description: 'Localização da oficina',
                   },
                   {
-                    id: 'opcao_7',
+                    id: 'opcao_9',
                     title: 'Falar atendente',
                     description: 'Atendimento humano',
                   },
@@ -769,7 +908,6 @@ function textoTemAlgumaPalavra(texto, palavras) {
 function identificarOpcaoPorTexto(texto) {
   const textoMinusculo = texto.toLowerCase();
 
-  // 1 - Reteste de cilindro GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'reteste',
@@ -808,7 +946,6 @@ function identificarOpcaoPorTexto(texto) {
     return '1';
   }
 
-  // 2 - Retirada de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'retirada',
@@ -848,7 +985,6 @@ function identificarOpcaoPorTexto(texto) {
     return '2';
   }
 
-  // 3 - Revisão de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'revisão',
@@ -878,8 +1014,6 @@ function identificarOpcaoPorTexto(texto) {
       'regular gnv',
       'regular gás',
       'regular gas',
-      'limpeza do gnv',
-      'limpeza de bico gnv',
       'gnv falhando',
       'gás falhando',
       'gas falhando',
@@ -903,7 +1037,6 @@ function identificarOpcaoPorTexto(texto) {
     return '3';
   }
 
-  // 4 - Instalação de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'instalação',
@@ -947,7 +1080,58 @@ function identificarOpcaoPorTexto(texto) {
     return '4';
   }
 
-  // 5 - Documentos
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'limpeza de bico',
+      'limpeza dos bicos',
+      'limpar bico',
+      'limpar bicos',
+      'bico injetor',
+      'bicos injetores',
+      'limpeza de bico injetor',
+      'limpeza bico',
+      'limpeza bicos',
+      'bico sujo',
+      'bicos sujos',
+      'quanto é limpeza de bico',
+      'quanto custa limpeza de bico',
+      'valor limpeza de bico',
+      'limpeza dos injetores',
+      'limpar injetores',
+    ])
+  ) {
+    return '5';
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'limpeza de arrefecimento',
+      'limpeza do arrefecimento',
+      'sistema de arrefecimento',
+      'limpeza do sistema de arrefecimento',
+      'arrefecimento',
+      'radiador',
+      'limpeza do radiador',
+      'limpar radiador',
+      'limpeza radiador',
+      'aditivo',
+      'troca de aditivo',
+      'trocar aditivo',
+      'agua do radiador',
+      'água do radiador',
+      'carro aquecendo',
+      'motor aquecendo',
+      'baixando agua',
+      'baixando água',
+      'limpeza com maquina',
+      'limpeza com máquina',
+      'maquina de arrefecimento',
+      'máquina de arrefecimento',
+    ])
+  ) {
+    return '6';
+  }
+
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'documento',
@@ -976,10 +1160,9 @@ function identificarOpcaoPorTexto(texto) {
       'papel do gnv',
     ])
   ) {
-    return '5';
+    return '7';
   }
 
-  // 6 - Endereço e horário
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'endereço',
@@ -1024,10 +1207,9 @@ function identificarOpcaoPorTexto(texto) {
       'funciona sabado',
     ])
   ) {
-    return '6';
+    return '8';
   }
 
-  // 7 - Falar com atendente
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'atendente',
@@ -1063,7 +1245,7 @@ function identificarOpcaoPorTexto(texto) {
       'preciso falar com alguem',
     ])
   ) {
-    return '7';
+    return '9';
   }
 
   return null;
@@ -1095,7 +1277,7 @@ function extrairOpcao(message) {
 
   const somenteNumeros = text.replace(/[^0-9]/g, '');
 
-  if (['1', '2', '3', '4', '5', '6', '7'].includes(somenteNumeros)) {
+  if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(somenteNumeros)) {
     return somenteNumeros;
   }
 
@@ -1500,7 +1682,7 @@ ${HORARIO_OFICINA}`
     await sendTextMessage(from, resposta);
     console.log('✅ Resposta processada.');
 
-    if (['1', '2', '3', '4'].includes(opcao)) {
+    if (['1', '2', '3', '4', '5', '6'].includes(opcao)) {
       const servico = nomeServicoPorOpcao(opcao);
 
       console.log('📢 Avisando atendente sobre interesse no serviço...');
@@ -1510,7 +1692,7 @@ ${HORARIO_OFICINA}`
       await sendConfirmacaoServico(from, servico, opcao);
     }
 
-    if (opcao === '7') {
+    if (opcao === '9') {
       console.log('📢 Avisando atendente...');
       await avisarAtendente(from, nomeCliente, 'Cliente solicitou atendimento humano.');
     }
