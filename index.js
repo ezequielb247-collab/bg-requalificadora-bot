@@ -25,6 +25,10 @@ const ENDERECO_OFICINA =
   process.env.ENDERECO_OFICINA ||
   'Av. Carlos Augusto T. Garcia, nº 1618 — Sol e Mar, Macaé - RJ, CEP 27940-290';
 
+const LINK_MAPS =
+  process.env.LINK_MAPS ||
+  'https://www.google.com/maps?q=-22.3914399,-41.7426833';
+
 const HORARIO_OFICINA =
   process.env.HORARIO_OFICINA ||
   'Segunda a sexta: 8:00 às 18:00\nSábado: 8:00 às 12:00';
@@ -46,17 +50,14 @@ function estaDentroDoHorario() {
   const meioDia = 12 * 60;
   const dezoitoHoras = 18 * 60;
 
-  // Domingo
   if (diaSemana === 0) {
     return false;
   }
 
-  // Segunda a sexta
   if (diaSemana >= 1 && diaSemana <= 5) {
     return horarioAtual >= oitoHoras && horarioAtual < dezoitoHoras;
   }
 
-  // Sábado
   if (diaSemana === 6) {
     return horarioAtual >= oitoHoras && horarioAtual < meioDia;
   }
@@ -163,6 +164,9 @@ Valor referente a 1 cilindro:
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
+
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
@@ -180,6 +184,9 @@ Valores:
 
 📍 Endereço:
 ${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -200,6 +207,9 @@ Valores:
 📍 Endereço:
 ${ENDERECO_OFICINA}
 
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
+
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
@@ -211,7 +221,10 @@ O valor da instalação é negociado diretamente com o atendente, pois pode vari
 👨‍🔧 Nossa equipe pode te orientar melhor sobre valores, documentos e prazo.
 
 📍 Endereço:
-${ENDERECO_OFICINA}`;
+${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}`;
   }
 
   if (opcao === '5') {
@@ -234,6 +247,9 @@ ${NOME_OFICINA}
 
 📍 Endereço:
 ${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}
 
 🕒 Horário de funcionamento:
 ${HORARIO_OFICINA}
@@ -565,6 +581,8 @@ function identificarOpcaoPorTexto(texto) {
       'local',
       'maps',
       'endereco da loja',
+      'rota',
+      'localizacao da loja',
     ])
   ) {
     return '6';
@@ -717,7 +735,13 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
 
     await sendTextMessage(
       from,
-      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.\n\n📍 Endereço:\n${ENDERECO_OFICINA}`
+      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.
+
+📍 Endereço:
+${ENDERECO_OFICINA}
+
+🗺️ Abrir no Google Maps:
+${LINK_MAPS}`
     );
 
     await avisarAtendente(
@@ -844,7 +868,12 @@ app.post('/webhook', async (req, res) => {
     if (foraDoHorario) {
       await sendTextMessage(
         from,
-        `Estamos fora do horário de atendimento no momento, mas sua solicitação foi recebida ✅\n\nNossa equipe responderá assim que possível.\n\n🕒 Horário:\n${HORARIO_OFICINA}`
+        `Estamos fora do horário de atendimento no momento, mas sua solicitação foi recebida ✅
+
+Nossa equipe responderá assim que possível.
+
+🕒 Horário:
+${HORARIO_OFICINA}`
       );
     }
 
