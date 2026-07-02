@@ -250,8 +250,10 @@ async function carregarValores() {
       reteste_cartao: normalizarNumero(valores.reteste_cartao, 480),
       reteste_vista: normalizarNumero(valores.reteste_vista, 450),
 
-      retirada_kit_5: normalizarNumero(valores.retirada_kit_5, 500),
-      retirada_kit_3: normalizarNumero(valores.retirada_kit_3, 400),
+      retirada_kit_5_cartao: normalizarNumero(valores.retirada_kit_5_cartao, 530),
+retirada_kit_5_vista: normalizarNumero(valores.retirada_kit_5_vista, 500),
+retirada_kit_3_cartao: normalizarNumero(valores.retirada_kit_3_cartao, 430),
+retirada_kit_3_vista: normalizarNumero(valores.retirada_kit_3_vista, 400),
 
       revisao_kit_3_cartao: normalizarNumero(valores.revisao_kit_3_cartao, 280),
       revisao_kit_3_vista: normalizarNumero(valores.revisao_kit_3_vista, 250),
@@ -277,8 +279,10 @@ async function carregarValores() {
       reteste_cartao: 480,
       reteste_vista: 450,
 
-      retirada_kit_5: 500,
-      retirada_kit_3: 400,
+      retirada_kit_5_cartao: 530,
+retirada_kit_5_vista: 500,
+retirada_kit_3_cartao: 430,
+retirada_kit_3_vista: 400,
 
       revisao_kit_3_cartao: 280,
       revisao_kit_3_vista: 250,
@@ -571,8 +575,14 @@ async function montarResposta(opcao) {
 💵 À vista: ${formatarMoeda(valores.reteste_vista)}
 
 ✅ Retirada de kit GNV
-• Kit 5ª geração: ${formatarMoeda(valores.retirada_kit_5)}
-• Kit 3ª geração: ${formatarMoeda(valores.retirada_kit_3)}
+
+5ª geração:
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.retirada_kit_5_vista)}
+
+3ª geração:
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.retirada_kit_3_vista)}
 
 ✅ Revisão de kit GNV
 
@@ -631,12 +641,17 @@ Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === '2') {
-    return `✅ RETIRADA DE KIT GNV
+  return `✅ RETIRADA DE KIT GNV
 
 Valores:
 
-• Retirada de kit GNV 5ª geração: ${formatarMoeda(valores.retirada_kit_5)}
-• Retirada de kit GNV 3ª geração: ${formatarMoeda(valores.retirada_kit_3)}
+5ª geração:
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.retirada_kit_5_vista)}
+
+3ª geração:
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
+💵 À vista: ${formatarMoeda(valores.retirada_kit_3_vista)}
 
 📄 Documento necessário:
 • Documento do carro ou documento do GNV
@@ -649,7 +664,7 @@ ${ENDERECO_OFICINA}
 ${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
-  }
+}
 
   if (opcao === '3') {
     return `✅ REVISÃO DE KIT GNV
