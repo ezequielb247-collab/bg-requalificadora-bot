@@ -217,7 +217,7 @@ async function sendTextMessage(to, text) {
   const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
 
   try {
-    const response = await axios.post(
+    await axios.post(
       url,
       {
         messaging_product: 'whatsapp',
@@ -257,7 +257,7 @@ async function sendMenuInterativo(to, mensagemInicial = null) {
     `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽\n\nToque no botão abaixo e escolha uma opção:`;
 
   try {
-    const response = await axios.post(
+    await axios.post(
       url,
       {
         messaging_product: 'whatsapp',
@@ -348,7 +348,7 @@ async function sendConfirmacaoServico(to, servico, opcaoServico) {
   const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
 
   try {
-    const response = await axios.post(
+    await axios.post(
       url,
       {
         messaging_product: 'whatsapp',
@@ -396,6 +396,164 @@ async function sendConfirmacaoServico(to, servico, opcaoServico) {
   }
 }
 
+function textoTemAlgumaPalavra(texto, palavras) {
+  return palavras.some((palavra) => texto.includes(palavra));
+}
+
+function identificarOpcaoPorTexto(texto) {
+  const textoMinusculo = texto.toLowerCase();
+
+  // 1 - Reteste de cilindro GNV
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'reteste',
+      'retestar',
+      'cilindro',
+      'cilindro gnv',
+      'requalificação',
+      'requalificacao',
+      'validade do cilindro',
+      'vencido',
+      'cilindro vencido',
+      'quanto é o reteste',
+      'quanto custa o reteste',
+      'valor do reteste',
+    ])
+  ) {
+    return '1';
+  }
+
+  // 2 - Retirada de kit GNV
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'retirada',
+      'retirar',
+      'tirar kit',
+      'remover kit',
+      'remoção',
+      'remocao',
+      'desinstalar',
+      'desinstalação',
+      'desinstalacao',
+      'quero tirar o kit',
+      'tirar gnv',
+      'retirar gnv',
+      'remover gnv',
+    ])
+  ) {
+    return '2';
+  }
+
+  // 3 - Revisão de kit GNV
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'revisão',
+      'revisao',
+      'manutenção',
+      'manutencao',
+      'regular',
+      'regulagem',
+      'falhando',
+      'falha',
+      'vazamento',
+      'cheiro de gás',
+      'cheiro de gas',
+      'não pega no gnv',
+      'nao pega no gnv',
+      'não funciona no gnv',
+      'nao funciona no gnv',
+      'carro falhando',
+      'revisar kit',
+    ])
+  ) {
+    return '3';
+  }
+
+  // 4 - Instalação de kit GNV
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'instalação',
+      'instalacao',
+      'instalar',
+      'instalar kit',
+      'colocar gnv',
+      'botar gnv',
+      'converter para gnv',
+      'conversão',
+      'conversao',
+      'kit novo',
+      'instalar gnv',
+      'quero colocar gnv',
+      'quero instalar gnv',
+    ])
+  ) {
+    return '4';
+  }
+
+  // 5 - Documentos
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'documento',
+      'documentos',
+      'precisa levar',
+      'o que levar',
+      'quais documentos',
+      'documentação',
+      'documentacao',
+      'crlv',
+      'dut',
+      'nota fiscal',
+    ])
+  ) {
+    return '5';
+  }
+
+  // 6 - Endereço e horário
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'endereço',
+      'endereco',
+      'onde fica',
+      'localização',
+      'localizacao',
+      'como chegar',
+      'horário',
+      'horario',
+      'abre que horas',
+      'fecha que horas',
+      'funcionamento',
+      'local',
+      'maps',
+      'endereco da loja',
+    ])
+  ) {
+    return '6';
+  }
+
+  // 7 - Falar com atendente
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      'atendente',
+      'humano',
+      'pessoa',
+      'falar com alguém',
+      'falar com alguem',
+      'falar com atendente',
+      'quero atendimento',
+      'me liga',
+      'ligação',
+      'ligacao',
+      'telefone',
+      'chamar atendente',
+      'vendedor',
+    ])
+  ) {
+    return '7';
+  }
+
+  return null;
+}
+
 function extrairOpcao(message) {
   if (message?.type === 'interactive') {
     const listReplyId = message.interactive?.list_reply?.id;
@@ -420,26 +578,39 @@ function extrairOpcao(message) {
   const text = message?.text?.body?.trim() || '';
   const textoMinusculo = text.toLowerCase();
 
+  // Se a pessoa digitar apenas um número, usa como opção do menu
+  const somenteNumeros = text.replace(/[^0-9]/g, '');
+  if (['1', '2', '3', '4', '5', '6', '7'].includes(somenteNumeros)) {
+    return somenteNumeros;
+  }
+
+  // Tenta entender frases do cliente
+  const opcaoPorTexto = identificarOpcaoPorTexto(text);
+  if (opcaoPorTexto) {
+    return opcaoPorTexto;
+  }
+
+  // Mensagens que devem abrir o menu
   if (
-    textoMinusculo.includes('oi') ||
-    textoMinusculo.includes('olá') ||
-    textoMinusculo.includes('ola') ||
-    textoMinusculo.includes('menu') ||
-    textoMinusculo.includes('inicio') ||
-    textoMinusculo.includes('início') ||
-    textoMinusculo.includes('bom dia') ||
-    textoMinusculo.includes('boa tarde') ||
-    textoMinusculo.includes('boa noite') ||
+    textoMinusculo === 'oi' ||
+    textoMinusculo === 'olá' ||
+    textoMinusculo === 'ola' ||
+    textoMinusculo === 'menu' ||
+    textoMinusculo === 'inicio' ||
+    textoMinusculo === 'início' ||
+    textoMinusculo === 'bom dia' ||
+    textoMinusculo === 'boa tarde' ||
+    textoMinusculo === 'boa noite' ||
+    textoMinusculo === 'gnv' ||
     textoMinusculo.includes('informação') ||
     textoMinusculo.includes('informacoes') ||
-    textoMinusculo.includes('informações') ||
-    textoMinusculo.includes('atendimento') ||
-    textoMinusculo.includes('gnv')
+    textoMinusculo.includes('informações')
   ) {
     return '';
   }
 
-  return text.replace(/[^0-9]/g, '');
+  // Se não entender, retorna algo inválido para cair na mensagem padrão
+  return 'invalido';
 }
 
 function obterTextoCliente(message) {
@@ -587,7 +758,7 @@ app.post('/webhook', async (req, res) => {
     const resposta = await montarResposta(opcao);
 
     if (!resposta) {
-      console.log('📤 Opção inválida. Enviando menu interativo...');
+      console.log('📤 Mensagem não entendida. Enviando menu interativo...');
       await sendMenuInterativo(
         from,
         `Não entendi sua mensagem.\n\nToque no botão abaixo para ver as opções de atendimento:`
