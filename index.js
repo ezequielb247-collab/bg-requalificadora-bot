@@ -23,7 +23,7 @@ const NOME_OFICINA = process.env.NOME_OFICINA || 'BG GNV Macaé';
 
 const ENDERECO_OFICINA =
   process.env.ENDERECO_OFICINA ||
-  'Endereço: Av. Carlos Augusto T. Garcia, nº 1618 — Sol e Mar, Macaé - RJ, CEP 27940-290';
+  'Av. Carlos Augusto T. Garcia, nº 1618 — Sol e Mar, Macaé - RJ, CEP 27940-290';
 
 const HORARIO_OFICINA =
   process.env.HORARIO_OFICINA ||
@@ -114,7 +114,8 @@ Valor referente a 1 cilindro:
 • Trazendo o carro de manhã, entregamos no final da tarde.
 • Trazendo o carro à tarde, entregamos no outro dia pela manhã.
 
-📍 ${ENDERECO_OFICINA}
+📍 Endereço:
+${ENDERECO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -131,7 +132,8 @@ Valores:
 • Documento do carro ou documento do GNV
 • Precisa estar no nome do último proprietário do veículo
 
-📍 ${ENDERECO_OFICINA}
+📍 Endereço:
+${ENDERECO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -149,7 +151,8 @@ Valores:
 💳 Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
 💵 À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
 
-📍 ${ENDERECO_OFICINA}
+📍 Endereço:
+${ENDERECO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
@@ -157,11 +160,12 @@ Para realizar o serviço, basta trazer o carro até a oficina.`;
   if (opcao === '4') {
     return `✅ INSTALAÇÃO DE KIT GNV
 
-O valor da instalação é negociado diretamente com o atendente, pois pode variar conforme o veículo e o tipo de kit.
+O valor da instalação é negociado diretamente com o atendente, pois pode variar conforme o veículo, o tipo de kit e as condições de instalação.
 
 👨‍🔧 Nossa equipe pode te orientar melhor sobre valores, documentos e prazo.
 
-📍 ${ENDERECO_OFICINA}`;
+📍 Endereço:
+${ENDERECO_OFICINA}`;
   }
 
   if (opcao === '5') {
@@ -182,7 +186,8 @@ Para ver o menu novamente, envie: menu`;
 
 ${NOME_OFICINA}
 
-📍 ${ENDERECO_OFICINA}
+📍 Endereço:
+${ENDERECO_OFICINA}
 
 🕒 Horário de funcionamento:
 ${HORARIO_OFICINA}
@@ -230,22 +235,26 @@ async function sendTextMessage(to, text) {
       }
     );
 
-    console.log('✅ Mensagem de texto enviada:', response.data);
+    console.log('✅ Mensagem enviada para:', to);
   } catch (error) {
     console.error(
-      '❌ Erro ao enviar mensagem de texto:',
+      '❌ Erro ao enviar mensagem:',
       error.response?.data || error.message
     );
   }
 }
 
-async function sendMenuInterativo(to) {
+async function sendMenuInterativo(to, mensagemInicial = null) {
   if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
     console.error('❌ WHATSAPP_TOKEN ou PHONE_NUMBER_ID não configurado.');
     return;
   }
 
   const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
+
+  const textoBody =
+    mensagemInicial ||
+    `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽\n\nToque no botão abaixo e escolha uma opção:`;
 
   try {
     const response = await axios.post(
@@ -261,7 +270,7 @@ async function sendMenuInterativo(to) {
             text: 'BG GNV Macaé',
           },
           body: {
-            text: `Olá! Seja bem-vindo(a) à ${NOME_OFICINA} 🚗⛽\n\nToque no botão abaixo e escolha uma opção:`,
+            text: textoBody,
           },
           footer: {
             text: 'Atendimento automático',
@@ -321,7 +330,7 @@ async function sendMenuInterativo(to) {
       }
     );
 
-    console.log('✅ Menu interativo enviado:', response.data);
+    console.log('✅ Menu interativo enviado para:', to);
   } catch (error) {
     console.error(
       '❌ Erro ao enviar menu interativo:',
@@ -348,7 +357,7 @@ async function sendConfirmacaoServico(to, servico, opcaoServico) {
         interactive: {
           type: 'button',
           body: {
-            text: `Você tem interesse em fazer o serviço: ${servico}?\n\nPodemos te esperar na loja?`,
+            text: `Você deseja seguir com este serviço?\n\nServiço: ${servico}\n\nEscolha uma opção abaixo:`,
           },
           action: {
             buttons: [
@@ -378,7 +387,7 @@ async function sendConfirmacaoServico(to, servico, opcaoServico) {
       }
     );
 
-    console.log('✅ Confirmação de serviço enviada:', response.data);
+    console.log('✅ Confirmação de serviço enviada para:', to);
   } catch (error) {
     console.error(
       '❌ Erro ao enviar confirmação de serviço:',
@@ -474,7 +483,7 @@ async function processarConfirmacaoServico(opcao, from, nomeCliente) {
 
     await sendTextMessage(
       from,
-      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.\n\n📍 ${ENDERECO_OFICINA}`
+      `✅ Perfeito! Vamos te esperar na loja para o serviço: ${servico}.\n\n📍 Endereço:\n${ENDERECO_OFICINA}`
     );
 
     await avisarAtendente(
@@ -517,8 +526,6 @@ app.get('/webhook', (req, res) => {
   const challenge = req.query['hub.challenge'];
 
   console.log('🔍 Verificação de webhook recebida');
-  console.log('Mode:', mode);
-  console.log('Token recebido:', token);
 
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
     console.log('✅ Webhook verificado com sucesso.');
@@ -531,7 +538,6 @@ app.get('/webhook', (req, res) => {
 
 app.post('/webhook', async (req, res) => {
   console.log('📩 Webhook POST recebido');
-  console.log(JSON.stringify(req.body, null, 2));
 
   try {
     const entry = req.body.entry?.[0];
@@ -582,7 +588,10 @@ app.post('/webhook', async (req, res) => {
 
     if (!resposta) {
       console.log('📤 Opção inválida. Enviando menu interativo...');
-      await sendMenuInterativo(from);
+      await sendMenuInterativo(
+        from,
+        `Não entendi sua mensagem.\n\nToque no botão abaixo para ver as opções de atendimento:`
+      );
       return res.sendStatus(200);
     }
 
