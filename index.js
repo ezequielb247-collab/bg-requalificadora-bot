@@ -769,6 +769,7 @@ function textoTemAlgumaPalavra(texto, palavras) {
 function identificarOpcaoPorTexto(texto) {
   const textoMinusculo = texto.toLowerCase();
 
+  // 1 - Reteste de cilindro GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'reteste',
@@ -783,11 +784,31 @@ function identificarOpcaoPorTexto(texto) {
       'quanto é o reteste',
       'quanto custa o reteste',
       'valor do reteste',
+      'selo vencido',
+      'cilindro venceu',
+      'meu cilindro venceu',
+      'validade vencida',
+      'validade do gnv',
+      'validade do cilindro gnv',
+      'requalificar',
+      'requalificar cilindro',
+      'requalificacao do cilindro',
+      'requalificação do cilindro',
+      'teste do cilindro',
+      'testar cilindro',
+      'cilindro fora da validade',
+      'cilindro perto de vencer',
+      'cilindro está vencido',
+      'cilindro esta vencido',
+      'gnv vencido',
+      'selo do gnv',
+      'selo do cilindro',
     ])
   ) {
     return '1';
   }
 
+  // 2 - Retirada de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'retirada',
@@ -803,11 +824,31 @@ function identificarOpcaoPorTexto(texto) {
       'tirar gnv',
       'retirar gnv',
       'remover gnv',
+      'tirar o gás',
+      'tirar o gas',
+      'retirar o gás',
+      'retirar o gas',
+      'remover o gás',
+      'remover o gas',
+      'tirar gas do carro',
+      'tirar gás do carro',
+      'retirar gas do carro',
+      'retirar gás do carro',
+      'remover gas do carro',
+      'remover gás do carro',
+      'tirar cilindro',
+      'remover cilindro',
+      'retirar cilindro',
+      'desmontar kit',
+      'desmontagem do kit',
+      'tirar instalação do gnv',
+      'tirar instalacao do gnv',
     ])
   ) {
     return '2';
   }
 
+  // 3 - Revisão de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'revisão',
@@ -827,11 +868,42 @@ function identificarOpcaoPorTexto(texto) {
       'nao funciona no gnv',
       'carro falhando',
       'revisar kit',
+      'manutenção do gás',
+      'manutencao do gas',
+      'manutenção do gas',
+      'manutencao do gás',
+      'revisar gnv',
+      'revisão do gnv',
+      'revisao do gnv',
+      'regular gnv',
+      'regular gás',
+      'regular gas',
+      'limpeza do gnv',
+      'limpeza de bico gnv',
+      'gnv falhando',
+      'gás falhando',
+      'gas falhando',
+      'carro ruim no gnv',
+      'carro ruim no gás',
+      'carro ruim no gas',
+      'carro morrendo no gnv',
+      'carro morrendo no gás',
+      'carro morrendo no gas',
+      'não passa para o gnv',
+      'nao passa para o gnv',
+      'não troca para o gnv',
+      'nao troca para o gnv',
+      'gás vazando',
+      'gas vazando',
+      'vazando gás',
+      'vazando gas',
+      'vazamento de gnv',
     ])
   ) {
     return '3';
   }
 
+  // 4 - Instalação de kit GNV
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'instalação',
@@ -847,11 +919,35 @@ function identificarOpcaoPorTexto(texto) {
       'instalar gnv',
       'quero colocar gnv',
       'quero instalar gnv',
+      'instalar gás',
+      'instalar gas',
+      'colocar gás',
+      'colocar gas',
+      'botar gás',
+      'botar gas',
+      'por gnv',
+      'pôr gnv',
+      'colocar cilindro',
+      'instalar cilindro',
+      'quanto custa colocar gnv',
+      'quanto custa instalar gnv',
+      'valor para instalar gnv',
+      'valor para colocar gnv',
+      'fazer instalação de gnv',
+      'fazer instalacao de gnv',
+      'transformar para gnv',
+      'converter carro para gnv',
+      'colocar gás no carro',
+      'colocar gas no carro',
+      'instalar gás no carro',
+      'instalar gas no carro',
+      'gnv no carro',
     ])
   ) {
     return '4';
   }
 
+  // 5 - Documentos
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'documento',
@@ -864,11 +960,26 @@ function identificarOpcaoPorTexto(texto) {
       'crlv',
       'dut',
       'nota fiscal',
+      'preciso levar o que',
+      'levar quais documentos',
+      'o que precisa levar',
+      'precisa de documento',
+      'documento do carro',
+      'documento do gnv',
+      'documento necessário',
+      'documento necessario',
+      'documentos necessários',
+      'documentos necessarios',
+      'quais papeis',
+      'quais papéis',
+      'papel do carro',
+      'papel do gnv',
     ])
   ) {
     return '5';
   }
 
+  // 6 - Endereço e horário
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'endereço',
@@ -887,11 +998,36 @@ function identificarOpcaoPorTexto(texto) {
       'endereco da loja',
       'rota',
       'localizacao da loja',
+      'localização da loja',
+      'qual endereço',
+      'qual endereco',
+      'manda localização',
+      'manda localizacao',
+      'manda o endereço',
+      'manda o endereco',
+      'me manda a localização',
+      'me manda a localizacao',
+      'me manda o endereço',
+      'me manda o endereco',
+      'google maps',
+      'mapa',
+      'fica onde',
+      'vocês ficam onde',
+      'voces ficam onde',
+      'qual horario',
+      'qual horário',
+      'horário de atendimento',
+      'horario de atendimento',
+      'abre sábado',
+      'abre sabado',
+      'funciona sábado',
+      'funciona sabado',
     ])
   ) {
     return '6';
   }
 
+  // 7 - Falar com atendente
   if (
     textoTemAlgumaPalavra(textoMinusculo, [
       'atendente',
@@ -907,67 +1043,30 @@ function identificarOpcaoPorTexto(texto) {
       'telefone',
       'chamar atendente',
       'vendedor',
+      'quero falar com alguém',
+      'quero falar com alguem',
+      'quero falar com uma pessoa',
+      'quero falar com humano',
+      'atendimento humano',
+      'falar com vendedor',
+      'falar com responsável',
+      'falar com responsavel',
+      'me chama',
+      'pode me chamar',
+      'me chama no whatsapp',
+      'quero tirar dúvida',
+      'quero tirar duvida',
+      'tenho uma dúvida',
+      'tenho uma duvida',
+      'preciso de ajuda',
+      'preciso falar com alguém',
+      'preciso falar com alguem',
     ])
   ) {
     return '7';
   }
 
   return null;
-}
-
-function extrairOpcao(message) {
-  if (message?.type === 'interactive') {
-    const listReplyId = message.interactive?.list_reply?.id;
-    const buttonReplyId = message.interactive?.button_reply?.id;
-    const id = listReplyId || buttonReplyId || '';
-
-    if (id.startsWith('opcao_')) {
-      return id.replace('opcao_', '');
-    }
-
-    if (id.startsWith('caminho_')) {
-      return id;
-    }
-
-    if (id.startsWith('interesse_')) {
-      return id;
-    }
-
-    return id.replace(/[^0-9]/g, '');
-  }
-
-  const text = message?.text?.body?.trim() || '';
-  const textoMinusculo = text.toLowerCase();
-
-  const somenteNumeros = text.replace(/[^0-9]/g, '');
-  if (['1', '2', '3', '4', '5', '6', '7'].includes(somenteNumeros)) {
-    return somenteNumeros;
-  }
-
-  const opcaoPorTexto = identificarOpcaoPorTexto(text);
-  if (opcaoPorTexto) {
-    return opcaoPorTexto;
-  }
-
-  if (
-    textoMinusculo === 'oi' ||
-    textoMinusculo === 'olá' ||
-    textoMinusculo === 'ola' ||
-    textoMinusculo === 'menu' ||
-    textoMinusculo === 'inicio' ||
-    textoMinusculo === 'início' ||
-    textoMinusculo === 'bom dia' ||
-    textoMinusculo === 'boa tarde' ||
-    textoMinusculo === 'boa noite' ||
-    textoMinusculo === 'gnv' ||
-    textoMinusculo.includes('informação') ||
-    textoMinusculo.includes('informacoes') ||
-    textoMinusculo.includes('informações')
-  ) {
-    return '';
-  }
-
-  return 'invalido';
 }
 
 function obterTextoCliente(message) {
