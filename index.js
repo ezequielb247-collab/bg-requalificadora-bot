@@ -6,6 +6,7 @@ const axios = require('axios');
 const {
   getValores,
   salvarConversa,
+  salvarLead,
 } = require('./services/sheets');
 
 const app = express();
@@ -1014,6 +1015,19 @@ async function processarDadosDoCarroSePendente(from, nomeCliente, textoCliente) 
   );
 
   await avisarDadosDoCarro(from, nomeCliente, pendente.servico, texto);
+
+  try {
+    await salvarLead({
+      nome: nomeCliente,
+      numero: from,
+      servico: pendente.servico,
+      dadosCarro: texto,
+    });
+
+    console.log('✅ Lead salvo na aba Leads.');
+  } catch (error) {
+    console.error('❌ Erro ao salvar lead:', error.message);
+  }
 
   delete atendimentosPendentes[from];
 

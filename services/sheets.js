@@ -27,7 +27,6 @@ async function getValores() {
   const rows = response.data.values || [];
   const valores = {};
 
-  // Pula a primeira linha, que é o cabeçalho
   for (let i = 1; i < rows.length; i++) {
     const codigo = rows[i][0];
     const valor = rows[i][2];
@@ -57,6 +56,30 @@ async function salvarConversa({ numero, nome, mensagem, opcao }) {
   });
 }
 
+async function salvarLead({ nome, numero, servico, dadosCarro }) {
+  const sheets = await getSheetsClient();
+
+  const agora = new Date().toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Leads!A:F',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [[
+        agora,
+        nome || '',
+        numero || '',
+        servico || '',
+        dadosCarro || '',
+        'Novo',
+      ]],
+    },
+  });
+}
+
 async function buscarUltimasConversas(numero, limite = 8) {
   const sheets = await getSheetsClient();
 
@@ -66,8 +89,6 @@ async function buscarUltimasConversas(numero, limite = 8) {
   });
 
   const rows = response.data.values || [];
-
-  // Remove cabeçalho
   const dados = rows.slice(1);
 
   const conversasCliente = dados
@@ -88,5 +109,6 @@ async function buscarUltimasConversas(numero, limite = 8) {
 module.exports = {
   getValores,
   salvarConversa,
+  salvarLead,
   buscarUltimasConversas,
 };
