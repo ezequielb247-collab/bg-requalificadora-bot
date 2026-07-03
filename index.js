@@ -1726,7 +1726,7 @@ app.get('/politica-de-privacidade', (req, res) => {
   <p>
     <strong>BG GNV Macaé</strong><br />
     Endereço: Av. Carlos Augusto T. Garcia, nº 1618-B — Sol e Mar, Macaé - RJ<br />
-    WhatsApp: +55 22 99221-7686
+    WhatsApp: +55 22 99101-6400
   </p>
 </body>
 </html>
