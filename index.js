@@ -1638,7 +1638,100 @@ ${HORARIO_OFICINA}`
 
   return false;
 }
+app.get('/politica-de-privacidade', (req, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Privacidade - BG GNV Macaé</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      line-height: 1.6;
+      color: #222;
+    }
 
+    h1, h2 {
+      color: #0b1f3a;
+    }
+
+    p {
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Política de Privacidade</h1>
+
+  <p><strong>BG GNV Macaé</strong></p>
+
+  <p>
+    A BG GNV Macaé respeita a privacidade dos seus clientes e se compromete
+    a proteger as informações recebidas durante o atendimento.
+  </p>
+
+  <h2>1. Informações coletadas</h2>
+
+  <p>
+    Coletamos informações fornecidas voluntariamente pelo cliente durante o
+    contato pelo WhatsApp, como nome, número de telefone, mensagens enviadas,
+    serviço de interesse e dados do veículo, como modelo, ano e informações
+    relacionadas ao serviço solicitado.
+  </p>
+
+  <h2>2. Uso das informações</h2>
+
+  <p>
+    As informações coletadas são utilizadas apenas para atendimento ao cliente,
+    envio de respostas automáticas, encaminhamento para atendentes, registro
+    de solicitações e organização interna dos atendimentos.
+  </p>
+
+  <h2>3. Armazenamento dos dados</h2>
+
+  <p>
+    Os dados podem ser armazenados em ferramentas internas, como planilhas e
+    sistemas de atendimento, com o objetivo de melhorar o acompanhamento dos
+    clientes e facilitar o contato da equipe.
+  </p>
+
+  <h2>4. Compartilhamento de dados</h2>
+
+  <p>
+    A BG GNV Macaé não vende, aluga ou compartilha dados pessoais dos clientes
+    com terceiros para fins comerciais.
+  </p>
+
+  <h2>5. Solicitação de remoção ou atualização</h2>
+
+  <p>
+    O cliente pode solicitar a remoção ou atualização de seus dados entrando
+    em contato pelo WhatsApp oficial da empresa.
+  </p>
+
+  <h2>6. Atualizações desta política</h2>
+
+  <p>
+    Esta política pode ser atualizada a qualquer momento para atender melhorias
+    no atendimento ou exigências legais.
+  </p>
+
+  <h2>7. Contato</h2>
+
+  <p>
+    <strong>BG GNV Macaé</strong><br />
+    Endereço: Av. Carlos Augusto T. Garcia, nº 1618-B — Sol e Mar, Macaé - RJ<br />
+    WhatsApp: +55 22 99221-7686
+  </p>
+</body>
+</html>
+  `);
+});
 app.get('/', (req, res) => {
   res.send('Bot BG GNV Macaé online ✅');
 });
