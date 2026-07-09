@@ -1,61 +1,144 @@
-# BG Requalificadora Bot
+# Bot WhatsApp via QR Code com Baileys
 
-Autoatendimento de WhatsApp para a oficina BG Requalificadora.
+Este projeto substitui a conexao antiga pela WhatsApp Cloud API por uma conexao via QR Code usando `@whiskeysockets/baileys`.
 
-## O que o bot faz
+O numero principal continua no WhatsApp Business do celular. O bot entra como aparelho vinculado, como se fosse o WhatsApp Web.
 
-- Mostra valores dos serviços;
-- Informa documentos necessários;
-- Informa prazo de entrega;
-- Mostra endereço e horário;
-- Encaminha para atendente na opção 8.
+## O que mudou
 
-## Serviços cadastrados
+- Nao usa webhook da Meta.
+- Nao usa `WHATSAPP_TOKEN`.
+- Nao usa `PHONE_NUMBER_ID`.
+- Mostra o QR Code em `/qr`.
+- Salva a sessao localmente em `SESSION_DIR`.
+- Responde mensagens recebidas pelo WhatsApp conectado.
+- Ignora mensagens enviadas pelo proprio bot.
+- Usa texto simples no lugar dos botoes interativos da Cloud API.
+- Mantem registro de conversas e leads no Google Sheets.
+- Mantem aviso para atendentes quando o cliente demonstra interesse.
+- Mantem `/politica-de-privacidade`.
 
-- Reteste de GNV;
-- Retirada de kit GNV;
-- Revisão de kit GNV.
+## Arquivos principais
 
-## Como instalar
+- `package.json`: dependencias e scripts.
+- `index.js`: servidor Express, conexao Baileys, QR Code e fluxo do bot.
+- `services/sheets.js`: integracao com Google Sheets.
+- `.env.example`: variaveis de ambiente.
 
-No terminal, dentro da pasta do projeto:
+## Como configurar localmente
 
-```bash
-npm install
+1. Instale as dependencias:
+
+   ```bash
+   npm install
+   ```
+
+2. Crie o arquivo `.env` a partir do exemplo:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Preencha no `.env`:
+
+   - `BUSINESS_NAME`
+   - `ATTENDANT_NUMBERS`
+   - `GOOGLE_SHEETS_ID`
+   - `GOOGLE_CREDENTIALS_JSON` ou `GOOGLE_APPLICATION_CREDENTIALS`
+
+4. Inicie:
+
+   ```bash
+   npm start
+   ```
+
+5. Abra no navegador:
+
+   ```text
+   http://localhost:3000/qr
+   ```
+
+6. No WhatsApp Business do celular principal, acesse aparelhos conectados e leia o QR Code.
+
+## Google Sheets
+
+Crie duas abas na planilha:
+
+- `Conversas`
+- `Leads`
+
+Cabecalhos sugeridos para `Conversas`:
+
+```text
+Data | Direcao | Nome | Telefone | Servico | Mensagem
 ```
 
-Depois rode:
+Cabecalhos sugeridos para `Leads`:
 
-```bash
-npm start
+```text
+Data | Nome | Telefone | Servico | Mensagem | Status
 ```
 
-## Configuração
+Compartilhe a planilha com o e-mail da conta de servico do Google.
 
-1. Renomeie o arquivo `.env.example` para `.env`.
-2. Preencha as informações do WhatsApp Cloud API.
-3. Preencha o ID da planilha no campo `SPREADSHEET_ID`.
-4. Substitua o conteúdo de `google-credentials.json` pelas credenciais reais da conta de serviço do Google.
+## Ajustar menu, palavras-chave, servicos e valores
 
-## Planilha Google Sheets
+No arquivo `index.js`, edite o bloco `services`:
 
-Crie uma planilha com uma aba chamada exatamente:
-
-```txt
-Valores
+```js
+const services = [
+  {
+    id: "1",
+    name: "Reteste cilindro GNV",
+    aliases: ["reteste", "cilindro", "validade do cilindro"],
+    priceLines: ["Cartao: R$ 480,00 em ate 3x sem juros", "A vista: R$ 450,00"],
+    details: ["Documento necessario: documento do carro ou documento do GNV no nome do ultimo proprietario"],
+    vehiclePrompt: "Mensagem pedindo os dados do veiculo para esse servico."
+  }
+];
 ```
 
-Coloque estas colunas:
+Tambem podem ser ajustados:
 
-| Código | Serviço | Valor |
-|---|---|---:|
-| reteste_cartao | Reteste GNV — cartão até 3x sem juros | 480 |
-| reteste_vista | Reteste GNV — à vista | 450 |
-| retirada_kit_5 | Retirada kit GNV 5ª geração | 500 |
-| retirada_kit_3 | Retirada kit GNV 3ª geração | 400 |
-| revisao_kit_3_cartao | Revisão kit GNV 3ª geração — cartão até 3x sem juros | 280 |
-| revisao_kit_3_vista | Revisão kit GNV 3ª geração — à vista | 250 |
-| revisao_kit_5_cartao | Revisão kit GNV 5ª geração — cartão até 3x sem juros | 430 |
-| revisao_kit_5_vista | Revisão kit GNV 5ª geração — à vista | 400 |
+- `greetingKeywords`
+- `priceKeywords`
+- `interestKeywords`
 
-O cliente deve alterar apenas a coluna **Valor**.
+## Deploy no Render
+
+1. Crie um novo Web Service no Render.
+2. Conecte o repositorio do projeto.
+3. Configure:
+
+   ```text
+   Build Command: npm install
+   Start Command: npm start
+   ```
+
+4. Adicione as variaveis de ambiente do `.env.example`.
+5. Crie um Persistent Disk no Render.
+6. Monte o disco em:
+
+   ```text
+   /var/data
+   ```
+
+7. Configure:
+
+   ```text
+   SESSION_DIR=/var/data/auth_info_baileys
+   ```
+
+8. Depois do deploy, abra:
+
+   ```text
+   https://SEU-SERVICO.onrender.com/qr
+   ```
+
+9. Escaneie o QR Code com o WhatsApp Business do celular principal.
+
+## Aviso importante sobre sessao no Render
+
+O Persistent Disk e necessario para manter a pasta da sessao. Sem ele, o Render pode apagar os arquivos da sessao em novos deploys ou reinicios, e voce precisara escanear o QR Code novamente.
+
+Se usar plano gratuito com hibernacao, a conexao pode cair quando o servico dormir. Para uso em producao, prefira um servico que permaneça ativo.

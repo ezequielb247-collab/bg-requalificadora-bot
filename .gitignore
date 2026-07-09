@@ -1,3 +1,6 @@
+node_modules/
 .env
+auth_info_baileys/
+npm-debug.log*
+.DS_Store
 google-credentials.json
-node_modules
