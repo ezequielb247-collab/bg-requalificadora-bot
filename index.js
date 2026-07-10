@@ -39,6 +39,7 @@ let connectionStatus = "iniciando";
 let lastConnectionUpdate = new Date().toISOString();
 
 const pendingLeads = new Map();
+const confirmacoesPendentes = new Map();
 const ultimasMensagens = new Map();
 const ultimoServicoPorCliente = new Map();
 const avisosRecentes = new Map();
@@ -671,8 +672,9 @@ function mensagemConfirmacaoServico(servico) {
 
 Serviço: ${servico}
 
-Digite: Tenho interesse
-Digite: Estou a caminho`;
+Digite 1 para Tenho interesse
+Digite 2 para Estou a caminho
+Digite 0 para Cancelar e voltar ao menu`;
 }
 
 function montarMenu(mensagemInicial = null) {
@@ -1220,12 +1222,13 @@ async function processarDadosDoCarroSePendente(jid, nomeCliente, textoCliente) {
   const textoMinusculo = normalizarTexto(texto);
   if (!texto) return false;
 
-  if (textoMinusculo === "menu" || textoMinusculo === "cancelar") {
+  if (["0", "cancelar", "menu", "voltar", "inicio"].includes(textoMinusculo)) {
     pendingLeads.delete(jid);
+    confirmacoesPendentes.delete(jid);
     await responderERegistrar(
       jid,
-      "Tudo bem, atendimento cancelado. Para ver as opções novamente, envie: menu",
-      pendente.opcaoServico
+      montarMenu("Atendimento cancelado. Escolha uma nova opção digitando o número:"),
+      "menu"
     );
     return true;
   }
@@ -1334,18 +1337,64 @@ async function handleIncomingMessage({ jid, text, pushName }) {
   const resolveuPendente = await processarDadosDoCarroSePendente(jid, nomeCliente, text);
   if (resolveuPendente) return;
 
+  const confirmacaoPendente = confirmacoesPendentes.get(jid);
+  const textoNormalizado = normalizarTexto(text);
+
+  if (confirmacaoPendente && textoNormalizado === "1") {
+    confirmacoesPendentes.delete(jid);
+    await processarConfirmacaoServico("interesse", jid, nomeCliente, confirmacaoPendente.opcaoServico);
+    return;
+  }
+
+  if (confirmacaoPendente && textoNormalizado === "2") {
+    confirmacoesPendentes.delete(jid);
+    await processarConfirmacaoServico("caminho", jid, nomeCliente, confirmacaoPendente.opcaoServico);
+    return;
+  }
+
+  if (confirmacaoPendente && textoNormalizado === "0") {
+    confirmacoesPendentes.delete(jid);
+    pendingLeads.delete(jid);
+
+    await responderERegistrar(
+      jid,
+      montarMenu("Atendimento cancelado. Tudo bem!\n\nEscolha uma nova opção digitando o número:"),
+      "menu"
+    );
+
+    return;
+  }
+
+  if (
+    confirmacaoPendente &&
+    ["cancelar", "menu", "voltar", "inicio"].includes(textoNormalizado)
+  ) {
+    confirmacoesPendentes.delete(jid);
+    pendingLeads.delete(jid);
+
+    await responderERegistrar(
+      jid,
+      montarMenu("Atendimento cancelado. Escolha uma nova opção digitando o número:"),
+      "menu"
+    );
+
+    return;
+  }
+
   const foraDoHorario = !estaDentroDoHorario();
   const opcao = extrairOpcao(text);
   const ultimoServico = ultimoServicoPorCliente.get(jid);
 
   if (ehComandoEstouACaminho(text)) {
     const opcaoServico = ultimoServico || "9";
+    confirmacoesPendentes.delete(jid);
     await processarConfirmacaoServico("caminho", jid, nomeCliente, opcaoServico);
     return;
   }
 
   if (ehComandoTenhoInteresse(text)) {
     const opcaoServico = ultimoServico || (opcao && /^[1-6]$/.test(opcao) ? opcao : "9");
+    confirmacoesPendentes.delete(jid);
     await processarConfirmacaoServico("interesse", jid, nomeCliente, opcaoServico);
     return;
   }
@@ -1392,6 +1441,11 @@ ${HORARIO_OFICINA}`,
 
     await avisarInteresseServico(from, nomeCliente, servico, text);
     await responderERegistrar(jid, mensagemConfirmacaoServico(servico), opcao);
+    confirmacoesPendentes.set(jid, {
+      opcaoServico: opcao,
+      servico,
+      criadoEm: new Date().toISOString()
+    });
   }
 
   if (opcao === "9") {
