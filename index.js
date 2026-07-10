@@ -17,341 +17,1284 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const SESSION_DIR = process.env.SESSION_DIR || "./auth_info_baileys";
-const BUSINESS_NAME = process.env.BUSINESS_NAME || "BG GNV Macae";
 const IGNORE_GROUPS = (process.env.IGNORE_GROUPS || "true").toLowerCase() === "true";
+
+const NOME_OFICINA = process.env.BUSINESS_NAME || process.env.NOME_OFICINA || "BG GNV Macaé";
+const ENDERECO_OFICINA =
+  process.env.ENDERECO_OFICINA ||
+  "Av. Carlos Augusto T. Garcia, nº 1618-B — Sol e Mar, Macaé - RJ, CEP 27940-290";
+const LINK_MAPS = process.env.LINK_MAPS || "https://maps.app.goo.gl/7ksH2EFcRNhEZxoPA";
+const HORARIO_OFICINA = (
+  process.env.HORARIO_OFICINA ||
+  "Segunda a sexta: 8:00 às 12:00 e 13:00 às 18:00\nSábado: 8:00 às 12:00"
+).replace(/\\n/g, "\n");
+
+const ATENDENTE_NUMERO =
+  process.env.ATENDENTE_NUMERO || process.env.ATTENDANT_NUMBERS || "";
 
 let sock;
 let currentQr = null;
 let currentQrDataUrl = null;
 let connectionStatus = "iniciando";
 let lastConnectionUpdate = new Date().toISOString();
-const recentLeadAlerts = new Map();
+
 const pendingLeads = new Map();
-const customerLastServices = new Map();
+const ultimasMensagens = new Map();
+const ultimoServicoPorCliente = new Map();
+const avisosRecentes = new Map();
 
-const address = {
-  text: "Av. Carlos Augusto T. Garcia, no 1618-B - Sol e Mar, Macae - RJ, CEP 27940-290",
-  maps: "https://www.google.com/maps?q=-22.3914399,-41.7426833",
-  hours: [
-    "Segunda a sexta: 8:00 as 12:00 e 13:00 as 18:00",
-    "Sabado: 8:00 as 12:00"
-  ]
-};
+function estaDentroDoHorario() {
+  const agora = new Date();
+  const dataBrasil = new Date(
+    agora.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })
+  );
 
-const services = [
-  {
-    id: "1",
-    name: "Reteste cilindro GNV",
-    aliases: ["reteste", "reteste cilindro", "cilindro", "validade do cilindro", "vencido", "cilindro vencido", "teste do cilindro", "retestar", "reteste gnv"],
-    priceLines: ["Cartao: R$ 480,00 em ate 3x sem juros", "A vista: R$ 450,00"],
-    details: [
-      "Documento necessario: documento do carro ou documento do GNV no nome do ultimo proprietario",
-      "Prazo: se o carro chegar de manha, entrega no final da tarde; se chegar a tarde, entrega no outro dia pela manha"
-    ],
-    vehiclePrompt: "Para adiantar o atendimento do reteste, envie por favor: modelo e ano do veiculo, placa, validade do cilindro se souber, e se o documento esta no seu nome ou no nome do ultimo proprietario."
-  },
-  {
-    id: "2",
-    name: "Retirada de kit GNV",
-    aliases: ["retirada", "retirar kit", "retirada kit", "remover kit", "remocao de kit", "remoção de kit", "tirar kit", "tirar o gas", "tirar gnv", "retirada do 3", "retirada de 3", "retirada 3", "retirada terceira", "retirada 5", "retirada quinta", "retirar 3 geracao", "retirar 5 geracao", "kit fora"],
-    priceLines: [
-      "Kit 5a geracao: cartao R$ 530,00 em ate 3x sem juros | a vista R$ 500,00",
-      "Kit 3a geracao: cartao R$ 430,00 em ate 3x sem juros | a vista R$ 400,00"
-    ],
-    details: ["Documento necessario: documento do carro ou documento do GNV no nome do ultimo proprietario"],
-    vehiclePrompt: "Para adiantar a retirada do kit, envie por favor: modelo e ano do veiculo, placa, se o kit e 3a ou 5a geracao, e se o documento esta no seu nome ou no nome do ultimo proprietario."
-  },
-  {
-    id: "3",
-    name: "Revisao kit GNV",
-    aliases: ["revisao", "revisão", "revisar", "manutencao", "manutenção", "regulagem", "regular gnv", "kit falhando", "carro falhando", "nao pega no gas", "não pega no gás", "cheiro de gas", "vazamento", "perda de rendimento", "consumo alto", "revisao do kit", "revisao 3", "revisao 5"],
-    priceLines: [
-      "3a geracao: cartao R$ 280,00 em ate 3x sem juros | a vista R$ 250,00",
-      "5a geracao: cartao R$ 430,00 em ate 3x sem juros | a vista R$ 400,00"
-    ],
-    details: [],
-    vehiclePrompt: "Para adiantar a revisao, envie por favor: modelo e ano do veiculo, placa, se o kit e 3a ou 5a geracao, e qual problema esta acontecendo."
-  },
-  {
-    id: "4",
-    name: "Instalacao GNV",
-    aliases: ["instalacao", "instalação", "instalar", "instalar gnv", "colocar gnv", "colocar gas", "botar gnv", "converter para gnv", "conversao gnv", "conversão gnv", "kit novo", "instalacao de kit"],
-    priceLines: ["Valor negociado diretamente com atendente, porque varia por veiculo, tipo de kit e condicoes de instalacao"],
-    details: [],
-    vehiclePrompt: "Para adiantar a instalacao, envie por favor: modelo e ano do veiculo, motor, se deseja kit 3a ou 5a geracao, e se ja possui algum kit."
-  },
-  {
-    id: "5",
-    name: "Limpeza de bico",
-    aliases: ["limpeza de bico", "limpar bico", "bico", "bicos", "bico injetor", "bicos injetores", "limpeza dos bicos", "limpeza bicos"],
-    priceLines: ["Cartao: R$ 180,00 em ate 3x sem juros", "A vista: R$ 150,00"],
-    details: [],
-    vehiclePrompt: "Para adiantar a limpeza de bico, envie por favor: modelo e ano do veiculo, motor, placa, e o sintoma que percebeu."
-  },
-  {
-    id: "6",
-    name: "Limpeza de sistema de arrefecimento",
-    aliases: ["arrefecimento", "limpeza de arrefecimento", "sistema de arrefecimento", "radiador", "limpeza radiador", "aditivo", "agua do radiador", "água do radiador", "maquina de arrefecimento", "máquina de arrefecimento"],
-    priceLines: ["Com maquina e aditivo incluso", "Cartao: R$ 330,00 em ate 3x sem juros", "A vista: R$ 300,00"],
-    details: [],
-    vehiclePrompt: "Para adiantar a limpeza do sistema de arrefecimento, envie por favor: modelo e ano do veiculo, motor, placa, e se esta com aquecimento, ferrugem ou vazamento."
-  },
-  {
-    id: "7",
-    name: "Documentos",
-    aliases: ["documento", "documentos", "doc", "docs", "documentacao", "documentação", "precisa de documento", "quais documentos", "documento necessario", "documento necessário"],
-    priceLines: [],
-    details: ["Documento do carro ou documento do GNV no nome do ultimo proprietario"],
-    vehiclePrompt: "Para conferir a documentacao, envie por favor uma foto ou os dados do documento do carro ou do GNV no nome do ultimo proprietario."
-  },
-  {
-    id: "8",
-    name: "Endereco e horario",
-    aliases: ["endereco", "endereço", "localizacao", "localização", "onde fica", "maps", "mapa", "horario", "horário", "abre que horas", "funciona", "sabado", "sábado", "como chegar"],
-    priceLines: [],
-    details: [address.text, `Google Maps: ${address.maps}`, ...address.hours],
-    vehiclePrompt: ""
-  },
-  {
-    id: "9",
-    name: "Falar com atendente",
-    aliases: ["atendente", "falar com atendente", "humano", "consultor", "vendedor", "equipe", "whatsapp", "ligar", "telefone", "duvida", "dúvida"],
-    priceLines: [],
-    details: ["Um atendente da BG GNV Macae vai continuar o atendimento por aqui."],
-    vehiclePrompt: "Para agilizar, envie por favor seu nome, servico desejado e modelo/ano do veiculo."
+  const diaSemana = dataBrasil.getDay();
+  const hora = dataBrasil.getHours();
+  const minuto = dataBrasil.getMinutes();
+  const horarioAtual = hora * 60 + minuto;
+
+  if (diaSemana === 0) return false;
+
+  if (diaSemana >= 1 && diaSemana <= 5) {
+    return (
+      (horarioAtual >= 8 * 60 && horarioAtual < 12 * 60) ||
+      (horarioAtual >= 13 * 60 && horarioAtual < 18 * 60)
+    );
   }
-];
 
-const greetingKeywords = [
-  "oi",
-  "ola",
-  "olá",
-  "bom dia",
-  "boa tarde",
-  "boa noite",
-  "menu",
-  "inicio",
-  "início",
-  "comecar",
-  "começar",
-  "opcoes",
-  "opções",
-  "servicos",
-  "serviços",
-  "atendimento"
-];
+  if (diaSemana === 6) {
+    return horarioAtual >= 8 * 60 && horarioAtual < 12 * 60;
+  }
 
-const priceKeywords = [
-  "valor",
-  "valores",
-  "preco",
-  "preço",
-  "quanto",
-  "quanto custa",
-  "quanto e",
-  "quanto é",
-  "custa quanto",
-  "tabela",
-  "orcamento",
-  "orçamento",
-  "parcelamento",
-  "cartao",
-  "cartão",
-  "a vista",
-  "avista"
-];
+  return false;
+}
 
-const interestKeywords = [
-  "tenho interesse",
-  "quero fazer",
-  "quero agendar",
-  "quero marcar",
-  "quero atendimento",
-  "quero falar",
-  "preciso fazer",
-  "preciso agendar",
-  "pode agendar",
-  "vamos fazer",
-  "vou levar",
-  "posso levar",
-  "fechar",
-  "contratar",
-  "marcar horario",
-  "marcar horário",
-  "agendar",
-  "agenda",
-  "atendente",
-  "falar com atendente"
-];
+function mensagemForaDoHorario() {
+  return `Olá! Recebemos sua mensagem.
 
-function normalizeText(text = "") {
-  return text
-    .toString()
+No momento estamos fora do horário de atendimento.
+
+Horário de funcionamento:
+${HORARIO_OFICINA}
+
+Mesmo assim, você pode ver as opções abaixo e nossa equipe responderá assim que possível.`;
+}
+
+function normalizarTexto(texto) {
+  return String(texto || "")
     .trim()
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function hasAnyKeyword(text, keywords) {
-  const normalized = normalizeText(text);
-  return keywords.some((keyword) => normalized.includes(normalizeText(keyword)));
+function ehMensagemDuplicada(numero, texto) {
+  const agora = Date.now();
+  const textoNormalizado = normalizarTexto(texto);
+
+  if (!textoNormalizado) return false;
+
+  const ultima = ultimasMensagens.get(numero);
+  if (ultima && ultima.texto === textoNormalizado && agora - ultima.horario < 15000) {
+    return true;
+  }
+
+  ultimasMensagens.set(numero, {
+    texto: textoNormalizado,
+    horario: agora
+  });
+
+  return false;
+}
+
+function normalizarNumeroWhatsApp(numero) {
+  return String(numero || "").replace(/\D/g, "");
+}
+
+function formatarJid(numeroOuJid) {
+  const valor = String(numeroOuJid || "").trim();
+  if (!valor) return null;
+  if (valor.includes("@")) return valor;
+
+  const digits = normalizarNumeroWhatsApp(valor);
+  return digits ? `${digits}@s.whatsapp.net` : null;
+}
+
+function numeroClientePorJid(jid) {
+  return String(jid || "").split("@")[0];
+}
+
+function getAtendentes() {
+  return ATENDENTE_NUMERO.split(",")
+    .map((numero) => numero.trim())
+    .filter(Boolean);
+}
+
+function ehAtendente(numeroOuJid) {
+  const numero = normalizarNumeroWhatsApp(numeroClientePorJid(numeroOuJid));
+  return getAtendentes().some((atendente) => normalizarNumeroWhatsApp(atendente) === numero);
+}
+
+function ehPedidoRelatorio(texto) {
+  const t = normalizarTexto(texto);
+
+  return (
+    t === "relatorio" ||
+    t === "relatorio leads" ||
+    t === "leads" ||
+    t === "resumo leads" ||
+    t === "relatorio de leads"
+  );
+}
+
+function ehPedidoValoresGerais(texto) {
+  const t = normalizarTexto(texto);
+
+  return (
+    t === "valores" ||
+    t === "precos" ||
+    t === "precos" ||
+    t === "tabela" ||
+    t === "tabela de precos" ||
+    t === "valor dos servicos" ||
+    t === "preco dos servicos" ||
+    t === "quanto custa os servicos" ||
+    t === "me passa os valores" ||
+    t === "manda os valores" ||
+    t === "quais os valores" ||
+    t === "quais sao os valores" ||
+    t.includes("tabela de preco") ||
+    t.includes("tabela de valor") ||
+    t.includes("lista de preco") ||
+    t.includes("lista de valor") ||
+    t.includes("me passa a tabela") ||
+    t.includes("manda a tabela") ||
+    t.includes("quanto custa todos") ||
+    t.includes("quanto custa os servicos") ||
+    t.includes("preco dos servicos") ||
+    t.includes("valor dos servicos") ||
+    t.includes("valores dos servicos")
+  );
+}
+
+function formatarObjetoContagem(objeto) {
+  const entradas = Object.entries(objeto || {});
+
+  if (entradas.length === 0) {
+    return "Nenhum registro.";
+  }
+
+  return entradas.map(([nome, quantidade]) => `- ${nome}: ${quantidade}`).join("\n");
+}
+
+async function enviarRelatorioLeads(jid) {
+  if (typeof sheets.gerarRelatorioLeads !== "function") {
+    await sendTextMessage(
+      jid,
+      "Ainda não encontrei a função de relatório no services/sheets.js atual. As conversas e leads continuam sendo salvos normalmente."
+    );
+    return;
+  }
+
+  try {
+    const relatorio = await sheets.gerarRelatorioLeads();
+
+    await sendTextMessage(
+      jid,
+      `RELATÓRIO DE LEADS
+
+Total de leads:
+${relatorio.total}
+
+Leads hoje:
+${relatorio.hoje}
+
+Leads nos últimos 7 dias:
+${relatorio.ultimos7Dias}
+
+Por serviço:
+${formatarObjetoContagem(relatorio.porServico)}
+
+Por status:
+${formatarObjetoContagem(relatorio.porStatus)}
+
+Para atualizar o status, altere manualmente na aba Leads da planilha.`
+    );
+  } catch (error) {
+    console.error("Erro ao gerar relatório de leads:", error.message);
+    await sendTextMessage(
+      jid,
+      "Não consegui gerar o relatório agora. Confira se a aba Leads existe e se a planilha está compartilhada com a conta de serviço."
+    );
+  }
+}
+
+function formatarMoeda(valor) {
+  const numero = Number(valor || 0);
+
+  return numero.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  });
+}
+
+function normalizarNumero(valor, padrao) {
+  if (valor === undefined || valor === null || valor === "") {
+    return padrao;
+  }
+
+  const limpo = String(valor)
+    .replace("R$", "")
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  const numero = Number(limpo);
+  return Number.isFinite(numero) ? numero : padrao;
+}
+
+async function carregarValores() {
+  if (typeof sheets.getValores === "function") {
+    try {
+      const valores = await sheets.getValores();
+      return {
+        reteste_cartao: normalizarNumero(valores.reteste_cartao, 480),
+        reteste_vista: normalizarNumero(valores.reteste_vista, 450),
+        retirada_kit_5_cartao: normalizarNumero(valores.retirada_kit_5_cartao, 530),
+        retirada_kit_5_vista: normalizarNumero(valores.retirada_kit_5_vista, 500),
+        retirada_kit_3_cartao: normalizarNumero(valores.retirada_kit_3_cartao, 430),
+        retirada_kit_3_vista: normalizarNumero(valores.retirada_kit_3_vista, 400),
+        revisao_kit_3_cartao: normalizarNumero(valores.revisao_kit_3_cartao, 280),
+        revisao_kit_3_vista: normalizarNumero(valores.revisao_kit_3_vista, 250),
+        revisao_kit_5_cartao: normalizarNumero(valores.revisao_kit_5_cartao, 430),
+        revisao_kit_5_vista: normalizarNumero(valores.revisao_kit_5_vista, 400),
+        limpeza_bico_cartao: normalizarNumero(valores.limpeza_bico_cartao, 180),
+        limpeza_bico_vista: normalizarNumero(valores.limpeza_bico_vista, 150),
+        limpeza_arrefecimento_cartao: normalizarNumero(valores.limpeza_arrefecimento_cartao, 330),
+        limpeza_arrefecimento_vista: normalizarNumero(valores.limpeza_arrefecimento_vista, 300)
+      };
+    } catch (error) {
+      console.error("Erro ao carregar valores da planilha:", error.message);
+    }
+  }
+
+  return {
+    reteste_cartao: 480,
+    reteste_vista: 450,
+    retirada_kit_5_cartao: 530,
+    retirada_kit_5_vista: 500,
+    retirada_kit_3_cartao: 430,
+    retirada_kit_3_vista: 400,
+    revisao_kit_3_cartao: 280,
+    revisao_kit_3_vista: 250,
+    revisao_kit_5_cartao: 430,
+    revisao_kit_5_vista: 400,
+    limpeza_bico_cartao: 180,
+    limpeza_bico_vista: 150,
+    limpeza_arrefecimento_cartao: 330,
+    limpeza_arrefecimento_vista: 300
+  };
+}
+
+function nomeServicoPorOpcao(opcao) {
+  const servicos = {
+    "1": "Reteste de cilindro de GNV",
+    "2": "Retirada de kit GNV",
+    "3": "Revisão de kit GNV",
+    "4": "Instalação de kit GNV",
+    "5": "Limpeza de bico",
+    "6": "Limpeza do sistema de arrefecimento"
+  };
+
+  return servicos[opcao] || "Serviço";
+}
+
+function mensagemPedidoDadosPorServico(opcaoServico, servico) {
+  const mensagens = {
+    "1": `Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Quantidade de cilindros, se souber
+3. Se o cilindro já está vencido ou perto de vencer, se souber
+
+Exemplo:
+Civic 2015, 1 cilindro, vencendo esse mês
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
+    "2": `Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se o kit é 3ª ou 5ª geração, se souber
+
+Exemplo:
+Palio 2014, kit 5ª geração
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
+    "3": `Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se o kit é 3ª ou 5ª geração, se souber
+
+Exemplo:
+Onix 2018, kit 5ª geração
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
+    "4": `Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se será instalação nova ou se já possui algum kit
+
+Exemplo:
+HB20 2020, instalação nova
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
+    "5": `Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se deseja limpeza preventiva ou se o carro está com falha, se souber
+
+Exemplo:
+Onix 2018, limpeza preventiva
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
+    "6": `Interesse registrado!
+
+Serviço:
+${servico}
+
+Para nossa equipe te atender melhor, envie por favor:
+
+1. Modelo e ano do carro
+2. Se o carro está baixando água, aquecendo ou se é limpeza preventiva, se souber
+
+Exemplo:
+Civic 2015, limpeza preventiva do arrefecimento
+
+Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`
+  };
+
+  return (
+    mensagens[opcaoServico] ||
+    `Interesse registrado!
+
+Serviço:
+${servico}
+
+Envie o modelo e ano do carro para nossa equipe te atender melhor.`
+  );
+}
+
+function mensagemDadosRecebidos(opcaoServico, servico, dadosCarro) {
+  const documentosPorServico = {
+    "1": `Enquanto isso, deixe separado se possível:
+
+- Documento do carro
+- Documento do GNV, se tiver
+- Informação da quantidade de cilindros, se souber`,
+    "2": `Enquanto isso, deixe separado se possível:
+
+- Documento do carro
+- Documento do GNV, se tiver
+- Informação se o kit é 3ª ou 5ª geração, se souber`,
+    "3": `Enquanto isso, deixe separado se possível:
+
+- Documento do carro
+- Informação se o kit é 3ª ou 5ª geração, se souber`,
+    "4": "Nossa equipe vai analisar o veículo e orientar sobre valores, documentos e prazo.",
+    "6": "A limpeza do sistema de arrefecimento é feita com máquina e já inclui o aditivo."
+  };
+
+  return `Informações recebidas!
+
+Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
+
+Serviço:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+${documentosPorServico[opcaoServico] || ""}
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Google Maps:
+${LINK_MAPS}`.trim();
+}
+
+async function montarResposta(opcao) {
+  const valores = await carregarValores();
+
+  if (opcao === "valores") {
+    return `TABELA DE VALORES
+
+Reteste de cilindro GNV
+Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.reteste_vista)}
+
+Retirada de kit GNV
+
+5ª geração:
+Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.retirada_kit_5_vista)}
+
+3ª geração:
+Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.retirada_kit_3_vista)}
+
+Revisão de kit GNV
+
+3ª geração:
+Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.revisao_kit_3_vista)}
+
+5ª geração:
+Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
+
+Limpeza de bico
+Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.limpeza_bico_vista)}
+
+Limpeza do sistema de arrefecimento
+Serviço com máquina e aditivo incluso.
+Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
+
+Instalação de kit GNV
+O valor é negociado diretamente com o atendente, pois varia conforme o veículo, tipo de kit e condições de instalação.
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Para ver o menu, envie: menu`;
+  }
+
+  if (opcao === "1") {
+    return `RETESTE DE CILINDRO DE GNV
+
+Valor referente a 1 cilindro:
+
+Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.reteste_vista)}
+
+Documento necessário:
+- Documento do carro ou documento do GNV
+- Precisa estar no nome do último proprietário do veículo
+
+Prazo de entrega:
+- Trazendo o carro de manhã, entregamos no final da tarde.
+- Trazendo o carro à tarde, entregamos no outro dia pela manhã.
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === "2") {
+    return `RETIRADA DE KIT GNV
+
+Valores:
+
+5ª geração:
+Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.retirada_kit_5_vista)}
+
+3ª geração:
+Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.retirada_kit_3_vista)}
+
+Documento necessário:
+- Documento do carro ou documento do GNV
+- Precisa estar no nome do último proprietário do veículo
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === "3") {
+    return `REVISÃO DE KIT GNV
+
+Valores:
+
+3ª geração:
+Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.revisao_kit_3_vista)}
+
+5ª geração:
+Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === "4") {
+    return `INSTALAÇÃO DE KIT GNV
+
+O valor da instalação é negociado diretamente com o atendente, pois pode variar conforme o veículo, o tipo de kit e as condições de instalação.
+
+Nossa equipe pode te orientar melhor sobre valores, documentos e prazo.
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}`;
+  }
+
+  if (opcao === "5") {
+    return `LIMPEZA DE BICO
+
+Valores:
+
+Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.limpeza_bico_vista)}
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === "6") {
+    return `LIMPEZA DO SISTEMA DE ARREFECIMENTO
+
+Serviço feito com máquina e com aditivo já incluso.
+
+Valores:
+
+Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
+À vista: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Para realizar o serviço, basta trazer o carro até a oficina.`;
+  }
+
+  if (opcao === "7") {
+    return `DOCUMENTOS NECESSÁRIOS
+
+Para reteste de cilindro de GNV ou retirada de kit GNV, é necessário trazer:
+
+- Documento do carro ou documento do GNV
+- Precisa estar no nome do último proprietário do veículo
+
+Para instalação de kit GNV, fale com o atendente para receber a orientação correta.
+
+Para ver o menu novamente, envie: menu`;
+  }
+
+  if (opcao === "8") {
+    return `ENDEREÇO E HORÁRIO
+
+${NOME_OFICINA}
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Horário de funcionamento:
+${HORARIO_OFICINA}
+
+Para realizar o serviço, basta trazer o carro até a oficina.
+
+Para ver o menu novamente, envie: menu`;
+  }
+
+  if (opcao === "9") {
+    return `ATENDIMENTO HUMANO
+
+Certo! Já avisei nossa equipe.
+
+Aguarde um momento, por favor.`;
+  }
+
+  return null;
+}
+
+function mensagemConfirmacaoServico(servico) {
+  return `Você deseja seguir com este serviço?
+
+Serviço: ${servico}
+
+Digite: Tenho interesse
+Digite: Estou a caminho`;
+}
+
+function montarMenu(mensagemInicial = null) {
+  const textoBody =
+    mensagemInicial ||
+    `Olá! Seja bem-vindo(a) à ${NOME_OFICINA}
+
+Somos especializados em serviços automotivos e GNV em Macaé-RJ.
+
+Escolha uma opção digitando o número:`;
+
+  return `${textoBody}
+
+1. Reteste cilindro GNV
+2. Retirada kit GNV
+3. Revisão kit GNV
+4. Instalação GNV
+5. Limpeza de bico
+6. Limpeza arrefecimento
+7. Documentos
+8. Endereço e horário
+9. Falar atendente`;
+}
+
+function textoTemAlgumaPalavra(texto, palavras) {
+  const textoNormalizado = normalizarTexto(texto);
+  return palavras.some((palavra) => textoNormalizado.includes(normalizarTexto(palavra)));
+}
+
+function identificarOpcaoPorTexto(texto) {
+  const textoMinusculo = normalizarTexto(texto);
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "reteste",
+      "retestar",
+      "cilindro",
+      "cilindro gnv",
+      "requalificacao",
+      "validade do cilindro",
+      "vencido",
+      "cilindro vencido",
+      "quanto e o reteste",
+      "quanto custa o reteste",
+      "valor do reteste",
+      "selo vencido",
+      "cilindro venceu",
+      "meu cilindro venceu",
+      "validade vencida",
+      "validade do gnv",
+      "validade do cilindro gnv",
+      "requalificar",
+      "requalificar cilindro",
+      "requalificacao do cilindro",
+      "teste do cilindro",
+      "testar cilindro",
+      "cilindro fora da validade",
+      "cilindro perto de vencer",
+      "cilindro esta vencido",
+      "gnv vencido",
+      "selo do gnv",
+      "selo do cilindro"
+    ])
+  ) {
+    return "1";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "retirada",
+      "retirar",
+      "tirar kit",
+      "remover kit",
+      "remocao",
+      "desinstalar",
+      "desinstalacao",
+      "quero tirar o kit",
+      "tirar gnv",
+      "retirar gnv",
+      "remover gnv",
+      "tirar o gas",
+      "retirar o gas",
+      "remover o gas",
+      "tirar gas do carro",
+      "retirar gas do carro",
+      "remover gas do carro",
+      "tirar cilindro",
+      "remover cilindro",
+      "retirar cilindro",
+      "desmontar kit",
+      "desmontagem do kit",
+      "tirar instalacao do gnv",
+      "retirada do 3",
+      "retirada de 3",
+      "retirada 3",
+      "retirada do kit 3",
+      "retirada kit 3",
+      "retirada quinta",
+      "retirada do 5",
+      "retirada kit 5"
+    ])
+  ) {
+    return "2";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "revisao",
+      "revisar",
+      "manutencao",
+      "regular",
+      "regulagem",
+      "falhando",
+      "falha",
+      "vazamento",
+      "cheiro de gas",
+      "nao pega no gnv",
+      "nao funciona no gnv",
+      "carro falhando",
+      "revisar kit",
+      "manutencao do gas",
+      "manutencao do gnv",
+      "revisar gnv",
+      "revisao do gnv",
+      "regular gnv",
+      "regular gas",
+      "gnv falhando",
+      "gas falhando",
+      "carro ruim no gnv",
+      "carro ruim no gas",
+      "carro morrendo no gnv",
+      "carro morrendo no gas",
+      "nao passa para o gnv",
+      "nao troca para o gnv",
+      "gas vazando",
+      "vazando gas",
+      "vazamento de gnv"
+    ])
+  ) {
+    return "3";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "instalacao",
+      "instalar",
+      "instalar kit",
+      "colocar gnv",
+      "botar gnv",
+      "converter para gnv",
+      "conversao",
+      "kit novo",
+      "instalar gnv",
+      "quero colocar gnv",
+      "quero instalar gnv",
+      "instalar gas",
+      "colocar gas",
+      "botar gas",
+      "por gnv",
+      "colocar cilindro",
+      "instalar cilindro",
+      "quanto custa colocar gnv",
+      "quanto custa instalar gnv",
+      "valor para instalar gnv",
+      "valor para colocar gnv",
+      "fazer instalacao de gnv",
+      "transformar para gnv",
+      "converter carro para gnv",
+      "colocar gas no carro",
+      "instalar gas no carro",
+      "gnv no carro"
+    ])
+  ) {
+    return "4";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "limpeza de bico",
+      "limpeza dos bicos",
+      "limpar bico",
+      "limpar bicos",
+      "bico injetor",
+      "bicos injetores",
+      "limpeza de bico injetor",
+      "limpeza bico",
+      "limpeza bicos",
+      "bico sujo",
+      "bicos sujos",
+      "quanto e limpeza de bico",
+      "quanto custa limpeza de bico",
+      "valor limpeza de bico",
+      "limpeza dos injetores",
+      "limpar injetores"
+    ])
+  ) {
+    return "5";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "limpeza de arrefecimento",
+      "limpeza do arrefecimento",
+      "sistema de arrefecimento",
+      "limpeza do sistema de arrefecimento",
+      "arrefecimento",
+      "radiador",
+      "limpeza do radiador",
+      "limpar radiador",
+      "limpeza radiador",
+      "aditivo",
+      "troca de aditivo",
+      "trocar aditivo",
+      "agua do radiador",
+      "carro aquecendo",
+      "motor aquecendo",
+      "baixando agua",
+      "limpeza com maquina",
+      "maquina de arrefecimento"
+    ])
+  ) {
+    return "6";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "documento",
+      "documentos",
+      "precisa levar",
+      "o que levar",
+      "quais documentos",
+      "documentacao",
+      "crlv",
+      "dut",
+      "nota fiscal",
+      "preciso levar o que",
+      "levar quais documentos",
+      "o que precisa levar",
+      "precisa de documento",
+      "documento do carro",
+      "documento do gnv",
+      "documento necessario",
+      "documentos necessarios",
+      "quais papeis",
+      "papel do carro",
+      "papel do gnv"
+    ])
+  ) {
+    return "7";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "endereco",
+      "onde fica",
+      "localizacao",
+      "como chegar",
+      "horario",
+      "abre que horas",
+      "fecha que horas",
+      "funcionamento",
+      "local",
+      "maps",
+      "endereco da loja",
+      "rota",
+      "localizacao da loja",
+      "qual endereco",
+      "manda localizacao",
+      "manda o endereco",
+      "me manda a localizacao",
+      "me manda o endereco",
+      "google maps",
+      "mapa",
+      "fica onde",
+      "voces ficam onde",
+      "qual horario",
+      "horario de atendimento",
+      "abre sabado",
+      "funciona sabado"
+    ])
+  ) {
+    return "8";
+  }
+
+  if (
+    textoTemAlgumaPalavra(textoMinusculo, [
+      "atendente",
+      "humano",
+      "pessoa",
+      "falar com alguem",
+      "falar com atendente",
+      "quero atendimento",
+      "me liga",
+      "ligacao",
+      "telefone",
+      "chamar atendente",
+      "vendedor",
+      "quero falar com alguem",
+      "quero falar com uma pessoa",
+      "quero falar com humano",
+      "atendimento humano",
+      "falar com vendedor",
+      "falar com responsavel",
+      "me chama",
+      "pode me chamar",
+      "me chama no whatsapp",
+      "quero tirar duvida",
+      "tenho uma duvida",
+      "preciso de ajuda",
+      "preciso falar com alguem"
+    ])
+  ) {
+    return "9";
+  }
+
+  return null;
 }
 
 function isExactMenuOption(text) {
-  const normalized = normalizeText(text).trim();
+  const normalized = normalizarTexto(text).trim();
   return /^[1-9]$/.test(normalized) ? normalized : null;
 }
 
-function isLeadCancelCommand(text) {
-  const normalized = normalizeText(text).trim();
-  return ["cancelar", "cancela", "cancel", "menu"].includes(normalized);
+function ehComandoTenhoInteresse(texto) {
+  const t = normalizarTexto(texto);
+  return (
+    t === "tenho interesse" ||
+    t === "quero agendar" ||
+    t === "quero fazer" ||
+    t === "quero atendimento" ||
+    t === "quero marcar" ||
+    t === "preciso agendar" ||
+    t === "preciso fazer" ||
+    t.includes("tenho interesse") ||
+    t.includes("quero agendar") ||
+    t.includes("quero fazer")
+  );
 }
 
-function buildMenuMessage() {
-  const options = services.map((service) => `${service.id}. ${service.name}`).join("\n");
-
-  return [
-    `Ola! Aqui e da ${BUSINESS_NAME}.`,
-    "",
-    "Escolha uma opcao digitando o numero ou escreva o que voce precisa:",
-    options,
-    "",
-    "Se quiser a tabela completa, digite: valores."
-  ].join("\n");
+function ehComandoEstouACaminho(texto) {
+  const t = normalizarTexto(texto);
+  return (
+    t === "estou a caminho" ||
+    t === "to a caminho" ||
+    t === "estou indo" ||
+    t === "to indo" ||
+    t === "vou ai" ||
+    t.includes("estou a caminho")
+  );
 }
 
-function buildPricesMessage() {
-  return [
-    "Tabela de valores BG GNV Macae:",
-    "",
-    "1. Reteste cilindro GNV",
-    "Cartao: R$ 480,00 em ate 3x sem juros",
-    "A vista: R$ 450,00",
-    "",
-    "2. Retirada de kit GNV",
-    "Kit 5a geracao: cartao R$ 530,00 em ate 3x sem juros | a vista R$ 500,00",
-    "Kit 3a geracao: cartao R$ 430,00 em ate 3x sem juros | a vista R$ 400,00",
-    "",
-    "3. Revisao kit GNV",
-    "3a geracao: cartao R$ 280,00 em ate 3x sem juros | a vista R$ 250,00",
-    "5a geracao: cartao R$ 430,00 em ate 3x sem juros | a vista R$ 400,00",
-    "",
-    "4. Instalacao GNV",
-    "Valor negociado diretamente com atendente, porque varia por veiculo, tipo de kit e condicoes de instalacao",
-    "",
-    "5. Limpeza de bico",
-    "Cartao: R$ 180,00 em ate 3x sem juros",
-    "A vista: R$ 150,00",
-    "",
-    "6. Limpeza de sistema de arrefecimento",
-    "Com maquina e aditivo incluso",
-    "Cartao: R$ 330,00 em ate 3x sem juros",
-    "A vista: R$ 300,00",
-    "",
-    "Para continuar, responda com o numero do servico ou escreva: quero atendimento."
-  ].join("\n");
-}
+function extrairOpcao(texto) {
+  const textoLimpo = String(texto || "").trim();
+  const opcaoExata = isExactMenuOption(textoLimpo);
+  if (opcaoExata) return opcaoExata;
 
-function buildPriceReply(matchedService) {
-  if (!matchedService) return buildPricesMessage();
+  if (ehPedidoValoresGerais(textoLimpo)) return "valores";
 
-  return [
-    buildPricesMessage(),
-    "",
-    `Pelo que entendi, sua duvida e sobre: ${matchedService.name}.`,
-    "Se quiser seguir com esse servico, responda: quero agendar."
-  ].join("\n");
-}
+  const opcaoPorTexto = identificarOpcaoPorTexto(textoLimpo);
+  if (opcaoPorTexto) return opcaoPorTexto;
 
-function buildServiceMessage(service) {
-  if (service.id === "8") {
-    return [
-      "Endereco e horario da BG GNV Macae:",
-      "",
-      address.text,
-      `Google Maps: ${address.maps}`,
-      "",
-      ...address.hours
-    ].join("\n");
+  const textoMinusculo = normalizarTexto(textoLimpo);
+  if (
+    textoMinusculo === "oi" ||
+    textoMinusculo === "ola" ||
+    textoMinusculo === "menu" ||
+    textoMinusculo === "inicio" ||
+    textoMinusculo === "bom dia" ||
+    textoMinusculo === "boa tarde" ||
+    textoMinusculo === "boa noite" ||
+    textoMinusculo === "gnv" ||
+    textoMinusculo.includes("informacao") ||
+    textoMinusculo.includes("informacoes")
+  ) {
+    return "";
   }
 
-  if (service.id === "9") {
-    return [
-      "Perfeito. Vou avisar nossa equipe para continuar o atendimento por aqui.",
-      "",
-      service.vehiclePrompt
-    ].join("\n");
+  return "invalido";
+}
+
+async function sendTextMessage(to, text) {
+  if (!sock) return;
+  await sock.sendMessage(to, { text });
+}
+
+async function enviarParaAtendentes(texto) {
+  const atendentes = getAtendentes();
+  for (const atendente of atendentes) {
+    const jid = formatarJid(atendente);
+    if (jid) await sendTextMessage(jid, texto);
+  }
+}
+
+function deveEnviarAviso(chave) {
+  const agora = Date.now();
+  const ultimo = avisosRecentes.get(chave) || 0;
+  if (agora - ultimo < 10000) return false;
+
+  avisosRecentes.set(chave, agora);
+  return true;
+}
+
+async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
+  if (!ATENDENTE_NUMERO) {
+    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
+    return;
   }
 
-  return [
-    service.name,
-    "",
-    ...service.priceLines,
-    service.priceLines.length ? "" : null,
-    ...service.details,
-    "",
-    "Se quiser seguir com esse servico, responda: quero agendar."
-  ]
-    .filter(Boolean)
-    .join("\n");
+  if (!deveEnviarAviso(`${clienteNumero}:atendente:${mensagemCliente}`)) return;
+
+  const texto = `Cliente precisa de atendimento
+
+Nome: ${nomeCliente || "Não informado"}
+Número: ${clienteNumero}
+
+Situação:
+${mensagemCliente || "Cliente solicitou atendimento"}
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  await enviarParaAtendentes(texto);
 }
 
-function buildLeadReply(service) {
-  const serviceName = service?.name || "atendimento";
-  const prompt = service?.vehiclePrompt || "Para agilizar, envie por favor seu nome, servico desejado e modelo/ano do veiculo.";
-
-  return [
-    `Perfeito. Vou separar seu atendimento sobre ${serviceName}.`,
-    "Para agilizar, me envie os dados abaixo:",
-    "",
-    prompt,
-    "",
-    "Se quiser desistir desse atendimento, digite: cancelar."
-  ].join("\n");
-}
-
-function buildLeadConfirmation(service) {
-  const serviceName = service?.name || "atendimento";
-
-  return [
-    "Recebi os dados do veiculo. Obrigado!",
-    `Ja avisei nossa equipe sobre ${serviceName}.`,
-    "Em breve um atendente continua o atendimento por aqui."
-  ].join("\n");
-}
-
-function findServiceByMessage(text) {
-  const option = isExactMenuOption(text);
-  if (option) return services.find((service) => service.id === option);
-
-  const normalized = normalizeText(text);
-  let bestMatch = null;
-
-  for (const service of services) {
-    let score = 0;
-
-    for (const alias of service.aliases) {
-      const normalizedAlias = normalizeText(alias);
-      if (normalized.includes(normalizedAlias)) {
-        score += normalizedAlias.length > 6 ? 4 : 2;
-      }
-    }
-
-    if (service.id === "2" && /\b(retirad|retirar|remover|tirar|remocao)\b/.test(normalized)) {
-      score += 10;
-    }
-
-    if (service.id === "3" && /\b(revis|manutenc|regulag|falhand|vazament)\b/.test(normalized)) {
-      score += 8;
-    }
-
-    if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-      bestMatch = { service, score };
-    }
+async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensagemOriginal) {
+  if (!ATENDENTE_NUMERO) {
+    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
+    return;
   }
 
-  return bestMatch?.service || null;
+  if (!deveEnviarAviso(`${clienteNumero}:servico:${servico}`)) return;
+
+  const texto = `Novo cliente interessado
+
+Nome: ${nomeCliente || "Não informado"}
+Número: ${clienteNumero}
+
+Serviço:
+${servico}
+
+Ação:
+Cliente pediu informações sobre este serviço.
+
+Mensagem original:
+${mensagemOriginal || "Cliente selecionou o serviço pelo menu."}
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  await enviarParaAtendentes(texto);
+}
+
+async function avisarAcaoServico(clienteNumero, nomeCliente, servico, acao, mensagemOriginal) {
+  if (!ATENDENTE_NUMERO) {
+    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
+    return;
+  }
+
+  if (!deveEnviarAviso(`${clienteNumero}:acao:${acao}:${servico}`)) return;
+
+  const texto = `Atualização de atendimento
+
+Nome: ${nomeCliente || "Não informado"}
+Número: ${clienteNumero}
+
+Serviço:
+${servico}
+
+Ação:
+${acao}
+
+Mensagem original:
+${mensagemOriginal || "Cliente respondeu ao atendimento automático."}
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  await enviarParaAtendentes(texto);
+}
+
+async function avisarDadosDoCarro(clienteNumero, nomeCliente, servico, dadosCarro) {
+  if (!ATENDENTE_NUMERO) {
+    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
+    return;
+  }
+
+  const texto = `Cliente enviou dados do veículo
+
+Nome: ${nomeCliente || "Não informado"}
+Número: ${clienteNumero}
+
+Serviço de interesse:
+${servico}
+
+Dados enviados:
+${dadosCarro}
+
+Próximo passo:
+Chamar o cliente e confirmar valor, prazo e documentos necessários.
+
+Entre em contato com o cliente pelo WhatsApp.`;
+
+  await enviarParaAtendentes(texto);
+}
+
+async function salvarConversa({ jid, nome, mensagem, opcao }) {
+  await sheets.appendConversation({
+    date: new Date(),
+    name: nome || "",
+    phone: numeroClientePorJid(jid),
+    message: mensagem || "",
+    matchedService: opcao || "",
+    direction: "received"
+  });
+}
+
+async function salvarResposta({ jid, mensagem, opcao }) {
+  await sheets.appendConversation({
+    date: new Date(),
+    name: NOME_OFICINA,
+    phone: numeroClientePorJid(jid),
+    message: mensagem || "",
+    matchedService: opcao || "",
+    direction: "sent"
+  });
+}
+
+async function salvarLead({ jid, nome, servico, dadosCarro }) {
+  await sheets.appendLead({
+    date: new Date(),
+    name: nome || "",
+    phone: numeroClientePorJid(jid),
+    service: servico,
+    message: dadosCarro
+  });
+}
+
+async function responderERegistrar(jid, texto, opcao = "") {
+  await sendTextMessage(jid, texto);
+  await salvarResposta({ jid, mensagem: texto, opcao });
+}
+
+async function processarDadosDoCarroSePendente(jid, nomeCliente, textoCliente) {
+  const pendente = pendingLeads.get(jid);
+  if (!pendente) return false;
+
+  const texto = String(textoCliente || "").trim();
+  const textoMinusculo = normalizarTexto(texto);
+  if (!texto) return false;
+
+  if (textoMinusculo === "menu" || textoMinusculo === "cancelar") {
+    pendingLeads.delete(jid);
+    await responderERegistrar(
+      jid,
+      "Tudo bem, atendimento cancelado. Para ver as opções novamente, envie: menu",
+      pendente.opcaoServico
+    );
+    return true;
+  }
+
+  await responderERegistrar(
+    jid,
+    mensagemDadosRecebidos(pendente.opcaoServico, pendente.servico, texto),
+    pendente.opcaoServico
+  );
+
+  await avisarDadosDoCarro(numeroClientePorJid(jid), nomeCliente, pendente.servico, texto);
+  await salvarLead({ jid, nome: nomeCliente, servico: pendente.servico, dadosCarro: texto });
+
+  pendingLeads.delete(jid);
+  return true;
+}
+
+async function processarConfirmacaoServico(acao, jid, nomeCliente, opcaoServico) {
+  const servico = nomeServicoPorOpcao(opcaoServico);
+
+  if (acao === "caminho") {
+    pendingLeads.delete(jid);
+
+    const texto = `Confirmado! Estamos te esperando.
+
+Serviço:
+${servico}
+
+Endereço:
+${ENDERECO_OFICINA}
+
+Abrir no Google Maps:
+${LINK_MAPS}
+
+Horário:
+${HORARIO_OFICINA}`;
+
+    await responderERegistrar(jid, texto, opcaoServico);
+    await avisarAcaoServico(
+      numeroClientePorJid(jid),
+      nomeCliente,
+      servico,
+      'Cliente digitou "Estou a caminho".',
+      "Estou a caminho"
+    );
+
+    return true;
+  }
+
+  if (acao === "interesse") {
+    pendingLeads.set(jid, {
+      servico,
+      opcaoServico,
+      criadoEm: new Date().toISOString()
+    });
+
+    await responderERegistrar(jid, mensagemPedidoDadosPorServico(opcaoServico, servico), opcaoServico);
+    await avisarAcaoServico(
+      numeroClientePorJid(jid),
+      nomeCliente,
+      servico,
+      'Cliente digitou "Tenho interesse" e o bot pediu as informações corretas do veículo.',
+      "Tenho interesse"
+    );
+
+    return true;
+  }
+
+  return false;
 }
 
 function getMessageText(message) {
@@ -367,143 +1310,93 @@ function getMessageText(message) {
   );
 }
 
-function formatJid(numberOrJid) {
-  const value = (numberOrJid || "").trim();
-  if (!value) return null;
-  if (value.includes("@")) return value;
-
-  const digits = value.replace(/\D/g, "");
-  return digits ? `${digits}@s.whatsapp.net` : null;
-}
-
-function getAttendantJids() {
-  return (process.env.ATTENDANT_NUMBERS || "")
-    .split(",")
-    .map(formatJid)
-    .filter(Boolean);
-}
-
-function shouldNotifyLead(customerJid) {
-  const now = Date.now();
-  const lastAlert = recentLeadAlerts.get(customerJid) || 0;
-  const cooldownMs = 30 * 60 * 1000;
-
-  if (now - lastAlert < cooldownMs) return false;
-
-  recentLeadAlerts.set(customerJid, now);
-  return true;
-}
-
-function getCustomerNumber(jid) {
-  return (jid || "").split("@")[0];
-}
-
-async function sendText(to, text) {
-  if (!sock) return;
-  await sock.sendMessage(to, { text });
-}
-
-async function notifyAttendants({ customerJid, customerName, text, matchedService }) {
-  const attendants = getAttendantJids();
-  if (!attendants.length || !shouldNotifyLead(customerJid)) return;
-
-  const customerNumber = getCustomerNumber(customerJid);
-  const serviceLine = matchedService ? `Servico: ${matchedService.name}` : "Servico: nao identificado";
-  const alert = [
-    "Novo cliente demonstrou interesse - BG GNV Macae.",
-    "",
-    `Cliente: ${customerName || customerNumber}`,
-    `WhatsApp: ${customerNumber}`,
-    serviceLine,
-    `Mensagem: ${text}`
-  ].join("\n");
-
-  await Promise.all(attendants.map((jid) => sendText(jid, alert)));
-}
-
 async function handleIncomingMessage({ jid, text, pushName }) {
-  const matchedService = findServiceByMessage(text);
-  const rememberedService = customerLastServices.get(jid);
-  const isGreeting = hasAnyKeyword(text, greetingKeywords);
-  const asksPrice = hasAnyKeyword(text, priceKeywords);
-  const showsInterest = hasAnyKeyword(text, interestKeywords) || matchedService?.id === "9";
-  const pendingLead = pendingLeads.get(jid);
+  const from = numeroClientePorJid(jid);
+  const nomeCliente = pushName || "";
 
-  await sheets.appendConversation({
-    date: new Date(),
-    name: pushName || "",
-    phone: getCustomerNumber(jid),
-    message: text,
-    matchedService: matchedService?.name || "",
-    direction: "received"
-  });
-
-  let reply;
-
-  if (pendingLead && isLeadCancelCommand(text)) {
-    pendingLeads.delete(jid);
-    reply = normalizeText(text).trim() === "menu"
-      ? buildMenuMessage()
-      : "Tudo bem, cancelei essa solicitacao. Se precisar, digite menu para ver as opcoes.";
-  } else if (pendingLead) {
-    const pendingService = pendingLead.service;
-    const vehicleData = text;
-
-    await sheets.appendLead({
-      date: new Date(),
-      name: pushName || "",
-      phone: getCustomerNumber(jid),
-      message: vehicleData,
-      service: pendingService?.name || ""
-    });
-
-    await notifyAttendants({
-      customerJid: jid,
-      customerName: pushName,
-      text: vehicleData,
-      matchedService: pendingService
-    });
-
-    pendingLeads.delete(jid);
-    reply = buildLeadConfirmation(pendingService);
-  } else if (showsInterest) {
-    const serviceForLead = matchedService || rememberedService || services.find((service) => service.id === "9");
-
-    pendingLeads.set(jid, {
-      service: serviceForLead,
-      requestedAt: new Date().toISOString(),
-      interestMessage: text,
-      customerName: pushName || ""
-    });
-
-    reply = buildLeadReply(serviceForLead);
-  } else if (asksPrice) {
-    reply = buildPriceReply(matchedService);
-  } else if (matchedService) {
-    reply = buildServiceMessage(matchedService);
-  } else if (isGreeting) {
-    reply = buildMenuMessage();
-  } else {
-    reply = [
-      "Entendi. Para te direcionar melhor, escolha uma das opcoes abaixo:",
-      "",
-      buildMenuMessage()
-    ].join("\n");
+  if (ehMensagemDuplicada(from, text)) {
+    console.log("Mensagem duplicada ignorada:", from);
+    return;
   }
 
-  if (matchedService && matchedService.id !== "8") {
-    customerLastServices.set(jid, matchedService);
+  if (ehAtendente(from) && ehPedidoRelatorio(text)) {
+    await enviarRelatorioLeads(jid);
+    return;
   }
 
-  await sendText(jid, reply);
-  await sheets.appendConversation({
-    date: new Date(),
-    name: BUSINESS_NAME,
-    phone: getCustomerNumber(jid),
-    message: reply,
-    matchedService: matchedService?.name || "",
-    direction: "sent"
+  await salvarConversa({
+    jid,
+    nome: nomeCliente,
+    mensagem: text || "menu",
+    opcao: "recebida"
   });
+
+  const resolveuPendente = await processarDadosDoCarroSePendente(jid, nomeCliente, text);
+  if (resolveuPendente) return;
+
+  const foraDoHorario = !estaDentroDoHorario();
+  const opcao = extrairOpcao(text);
+  const ultimoServico = ultimoServicoPorCliente.get(jid);
+
+  if (ehComandoEstouACaminho(text)) {
+    const opcaoServico = ultimoServico || "9";
+    await processarConfirmacaoServico("caminho", jid, nomeCliente, opcaoServico);
+    return;
+  }
+
+  if (ehComandoTenhoInteresse(text)) {
+    const opcaoServico = ultimoServico || (opcao && /^[1-6]$/.test(opcao) ? opcao : "9");
+    await processarConfirmacaoServico("interesse", jid, nomeCliente, opcaoServico);
+    return;
+  }
+
+  if (foraDoHorario && !opcao) {
+    await responderERegistrar(jid, montarMenu(mensagemForaDoHorario()), "menu");
+    return;
+  }
+
+  if (!opcao) {
+    await responderERegistrar(jid, montarMenu(), "menu");
+    return;
+  }
+
+  const resposta = await montarResposta(opcao);
+
+  if (!resposta) {
+    const mensagemPadrao = foraDoHorario
+      ? mensagemForaDoHorario()
+      : "Não entendi sua mensagem.\n\nDigite menu para ver as opções de atendimento:";
+
+    await responderERegistrar(jid, montarMenu(mensagemPadrao), "menu");
+    return;
+  }
+
+  if (foraDoHorario) {
+    await responderERegistrar(
+      jid,
+      `Estamos fora do horário de atendimento no momento, mas sua solicitação foi recebida.
+
+Nossa equipe responderá assim que possível.
+
+Horário:
+${HORARIO_OFICINA}`,
+      opcao
+    );
+  }
+
+  await responderERegistrar(jid, resposta, opcao);
+
+  if (["1", "2", "3", "4", "5", "6"].includes(opcao)) {
+    const servico = nomeServicoPorOpcao(opcao);
+    ultimoServicoPorCliente.set(jid, opcao);
+
+    await avisarInteresseServico(from, nomeCliente, servico, text);
+    await responderERegistrar(jid, mensagemConfirmacaoServico(servico), opcao);
+  }
+
+  if (opcao === "9") {
+    await avisarAtendente(from, nomeCliente, "Cliente solicitou atendimento humano.");
+  }
 }
 
 async function startWhatsApp() {
@@ -515,7 +1408,7 @@ async function startWhatsApp() {
     auth: state,
     printQRInTerminal: false,
     logger: pino({ level: process.env.LOG_LEVEL || "silent" }),
-    browser: [BUSINESS_NAME, "Chrome", "1.0.0"]
+    browser: [NOME_OFICINA, "Chrome", "1.0.0"]
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -543,12 +1436,12 @@ async function startWhatsApp() {
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
       connectionStatus = shouldReconnect ? "reconectando" : "desconectado";
-      console.log("Conexao encerrada.", { statusCode, shouldReconnect });
+      console.log("Conexão encerrada.", { statusCode, shouldReconnect });
 
       if (shouldReconnect) {
         startWhatsApp().catch((error) => console.error("Erro ao reconectar:", error));
       } else {
-        console.log("Sessao encerrada. Apague a pasta de sessao e leia um novo QR Code.");
+        console.log("Sessão encerrada. Apague a pasta de sessão e leia um novo QR Code.");
       }
     }
   });
@@ -589,7 +1482,7 @@ app.get("/qr", (req, res) => {
 
   const qrHelp = currentQrDataUrl
     ? "Abra o WhatsApp no celular principal, acesse aparelhos conectados e escaneie este QR Code."
-    : "Quando a conexao pedir um novo QR Code, ele aparecera aqui automaticamente.";
+    : "Quando a conexão pedir um novo QR Code, ele aparecerá aqui automaticamente.";
 
   res.send(`<!doctype html>
 <html lang="pt-BR">
@@ -611,11 +1504,11 @@ app.get("/qr", (req, res) => {
 <body>
   <main>
     <section>
-      <h1>Conexao do WhatsApp</h1>
+      <h1>Conexão do WhatsApp</h1>
       <div class="status">${connectionStatus}</div>
       ${qrImage}
       <p>${qrHelp}</p>
-      <p class="meta">Ultima atualizacao: ${lastConnectionUpdate}</p>
+      <p class="meta">Última atualização: ${lastConnectionUpdate}</p>
     </section>
   </main>
 </body>
@@ -628,20 +1521,31 @@ app.get("/politica-de-privacidade", (req, res) => {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Politica de Privacidade</title>
+  <title>Política de Privacidade - BG GNV Macaé</title>
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6; }
-    main { max-width: 820px; margin: 0 auto; padding: 40px 20px; }
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #222; }
+    h1, h2 { color: #0b1f3a; }
+    p { margin-bottom: 14px; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Politica de Privacidade</h1>
-    <p>Coletamos apenas as informacoes enviadas voluntariamente pelo usuario durante o atendimento pelo WhatsApp, como nome, telefone, mensagem e interesse no servico.</p>
-    <p>Essas informacoes sao usadas para responder solicitacoes, registrar atendimentos e encaminhar oportunidades para a equipe responsavel.</p>
-    <p>Os dados podem ser armazenados em planilhas internas de controle e nao sao vendidos a terceiros.</p>
-    <p>Para solicitar remocao ou correcao de dados, entre em contato pelos canais oficiais da empresa.</p>
-  </main>
+  <h1>Política de Privacidade</h1>
+  <p><strong>BG GNV Macaé</strong></p>
+  <p>A BG GNV Macaé respeita a privacidade dos seus clientes e se compromete a proteger as informações recebidas durante o atendimento.</p>
+  <h2>1. Informações coletadas</h2>
+  <p>Coletamos informações fornecidas voluntariamente pelo cliente durante o contato pelo WhatsApp, como nome, número de telefone, mensagens enviadas, serviço de interesse e dados do veículo.</p>
+  <h2>2. Uso das informações</h2>
+  <p>As informações coletadas são utilizadas apenas para atendimento ao cliente, envio de respostas automáticas, encaminhamento para atendentes, registro de solicitações e organização interna dos atendimentos.</p>
+  <h2>3. Armazenamento dos dados</h2>
+  <p>Os dados podem ser armazenados em ferramentas internas, como planilhas e sistemas de atendimento, com o objetivo de melhorar o acompanhamento dos clientes.</p>
+  <h2>4. Compartilhamento de dados</h2>
+  <p>A BG GNV Macaé não vende, aluga ou compartilha dados pessoais dos clientes com terceiros para fins comerciais.</p>
+  <h2>5. Solicitação de remoção ou atualização</h2>
+  <p>O cliente pode solicitar a remoção ou atualização de seus dados entrando em contato pelo WhatsApp oficial da empresa.</p>
+  <h2>6. Atualizações desta política</h2>
+  <p>Esta política pode ser atualizada a qualquer momento para atender melhorias no atendimento ou exigências legais.</p>
+  <h2>7. Contato</h2>
+  <p><strong>BG GNV Macaé</strong><br />Endereço: ${ENDERECO_OFICINA}<br />WhatsApp: +55 22 99101-6400</p>
 </body>
 </html>`);
 });
