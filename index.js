@@ -76,7 +76,7 @@ function mensagemForaDoHorario() {
 
 No momento estamos fora do horário de atendimento.
 
-Horário de funcionamento:
+🕒 Horário de funcionamento:
 ${HORARIO_OFICINA}
 
 Mesmo assim, você pode ver as opções abaixo e nossa equipe responderá assim que possível.`;
@@ -313,7 +313,7 @@ function nomeServicoPorOpcao(opcao) {
 
 function mensagemPedidoDadosPorServico(opcaoServico, servico) {
   const mensagens = {
-    "1": `Interesse registrado!
+    "1": `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -328,7 +328,7 @@ Exemplo:
 Civic 2015, 1 cilindro, vencendo esse mês
 
 Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "2": `Interesse registrado!
+    "2": `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -342,7 +342,7 @@ Exemplo:
 Palio 2014, kit 5ª geração
 
 Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "3": `Interesse registrado!
+    "3": `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -356,7 +356,7 @@ Exemplo:
 Onix 2018, kit 5ª geração
 
 Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "4": `Interesse registrado!
+    "4": `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -370,7 +370,7 @@ Exemplo:
 HB20 2020, instalação nova
 
 Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "5": `Interesse registrado!
+    "5": `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -384,7 +384,7 @@ Exemplo:
 Onix 2018, limpeza preventiva
 
 Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "6": `Interesse registrado!
+    "6": `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -402,7 +402,7 @@ Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`
 
   return (
     mensagens[opcaoServico] ||
-    `Interesse registrado!
+    `✅ Interesse registrado!
 
 Serviço:
 ${servico}
@@ -431,22 +431,22 @@ function mensagemDadosRecebidos(opcaoServico, servico, dadosCarro) {
     "6": "A limpeza do sistema de arrefecimento é feita com máquina e já inclui o aditivo."
   };
 
-  return `Informações recebidas!
+  return `✅ Informações recebidas!
 
 Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
 
 Serviço:
 ${servico}
 
-Dados enviados:
+🚘 Dados enviados:
 ${dadosCarro}
 
 ${documentosPorServico[opcaoServico] || ""}
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}`.trim();
 }
 
@@ -454,183 +454,183 @@ async function montarResposta(opcao) {
   const valores = await carregarValores();
 
   if (opcao === "valores") {
-    return `TABELA DE VALORES
+    return `💰 TABELA DE VALORES
 
-Reteste de cilindro GNV
-Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.reteste_vista)}
+✅ Reteste de cilindro GNV
+💳 Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.reteste_vista)}
 
-Retirada de kit GNV
-
-5ª geração:
-Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.retirada_kit_5_vista)}
-
-3ª geração:
-Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.retirada_kit_3_vista)}
-
-Revisão de kit GNV
-
-3ª geração:
-Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.revisao_kit_3_vista)}
+✅ Retirada de kit GNV
 
 5ª geração:
-Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.retirada_kit_5_vista)}
 
-Limpeza de bico
-Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.limpeza_bico_vista)}
+3ª geração:
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.retirada_kit_3_vista)}
 
-Limpeza do sistema de arrefecimento
+✅ Revisão de kit GNV
+
+3ª geração:
+💳 Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.revisao_kit_3_vista)}
+
+5ª geração:
+💳 Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.revisao_kit_5_vista)}
+
+✅ Limpeza de bico
+💳 Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.limpeza_bico_vista)}
+
+✅ Limpeza do sistema de arrefecimento
 Serviço com máquina e aditivo incluso.
-Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
+💳 Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
 
-Instalação de kit GNV
+✅ Instalação de kit GNV
 O valor é negociado diretamente com o atendente, pois varia conforme o veículo, tipo de kit e condições de instalação.
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
 Para ver o menu, envie: menu`;
   }
 
   if (opcao === "1") {
-    return `RETESTE DE CILINDRO DE GNV
+    return `✅ RETESTE DE CILINDRO DE GNV
 
 Valor referente a 1 cilindro:
 
-Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.reteste_vista)}
+💳 Cartão: ${formatarMoeda(valores.reteste_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.reteste_vista)}
 
-Documento necessário:
-- Documento do carro ou documento do GNV
-- Precisa estar no nome do último proprietário do veículo
+📄 Documento necessário:
+• Documento do carro ou documento do GNV
+• Precisa estar no nome do último proprietário do veículo
 
-Prazo de entrega:
-- Trazendo o carro de manhã, entregamos no final da tarde.
-- Trazendo o carro à tarde, entregamos no outro dia pela manhã.
+⏱️ Prazo de entrega:
+• Trazendo o carro de manhã, entregamos no final da tarde.
+• Trazendo o carro à tarde, entregamos no outro dia pela manhã.
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === "2") {
-    return `RETIRADA DE KIT GNV
+    return `✅ RETIRADA DE KIT GNV
 
 Valores:
 
 5ª geração:
-Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.retirada_kit_5_vista)}
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_5_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.retirada_kit_5_vista)}
 
 3ª geração:
-Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.retirada_kit_3_vista)}
+💳 Cartão: ${formatarMoeda(valores.retirada_kit_3_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.retirada_kit_3_vista)}
 
-Documento necessário:
-- Documento do carro ou documento do GNV
-- Precisa estar no nome do último proprietário do veículo
+📄 Documento necessário:
+• Documento do carro ou documento do GNV
+• Precisa estar no nome do último proprietário do veículo
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === "3") {
-    return `REVISÃO DE KIT GNV
+    return `✅ REVISÃO DE KIT GNV
 
 Valores:
 
 3ª geração:
-Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.revisao_kit_3_vista)}
+💳 Cartão: ${formatarMoeda(valores.revisao_kit_3_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.revisao_kit_3_vista)}
 
 5ª geração:
-Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.revisao_kit_5_vista)}
+💳 Cartão: ${formatarMoeda(valores.revisao_kit_5_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.revisao_kit_5_vista)}
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === "4") {
-    return `INSTALAÇÃO DE KIT GNV
+    return `✅ INSTALAÇÃO DE KIT GNV
 
 O valor da instalação é negociado diretamente com o atendente, pois pode variar conforme o veículo, o tipo de kit e as condições de instalação.
 
 Nossa equipe pode te orientar melhor sobre valores, documentos e prazo.
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}`;
   }
 
   if (opcao === "5") {
-    return `LIMPEZA DE BICO
+    return `✅ LIMPEZA DE BICO
 
 Valores:
 
-Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.limpeza_bico_vista)}
+💳 Cartão: a partir de ${formatarMoeda(valores.limpeza_bico_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.limpeza_bico_vista)}
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === "6") {
-    return `LIMPEZA DO SISTEMA DE ARREFECIMENTO
+    return `✅ LIMPEZA DO SISTEMA DE ARREFECIMENTO
 
 Serviço feito com máquina e com aditivo já incluso.
 
 Valores:
 
-Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
-À vista: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
+💳 Cartão: ${formatarMoeda(valores.limpeza_arrefecimento_cartao)} em até 3x sem juros
+💵 À vista no dinheiro ou Pix: ${formatarMoeda(valores.limpeza_arrefecimento_vista)}
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
 Para realizar o serviço, basta trazer o carro até a oficina.`;
   }
 
   if (opcao === "7") {
-    return `DOCUMENTOS NECESSÁRIOS
+    return `📄 DOCUMENTOS NECESSÁRIOS
 
 Para reteste de cilindro de GNV ou retirada de kit GNV, é necessário trazer:
 
-- Documento do carro ou documento do GNV
-- Precisa estar no nome do último proprietário do veículo
+• Documento do carro ou documento do GNV
+• Precisa estar no nome do último proprietário do veículo
 
 Para instalação de kit GNV, fale com o atendente para receber a orientação correta.
 
@@ -638,17 +638,17 @@ Para ver o menu novamente, envie: menu`;
   }
 
   if (opcao === "8") {
-    return `ENDEREÇO E HORÁRIO
+    return `📍 ENDEREÇO E HORÁRIO
 
 ${NOME_OFICINA}
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
-Horário de funcionamento:
+🕒 Horário de funcionamento:
 ${HORARIO_OFICINA}
 
 Para realizar o serviço, basta trazer o carro até a oficina.
@@ -657,7 +657,7 @@ Para ver o menu novamente, envie: menu`;
   }
 
   if (opcao === "9") {
-    return `ATENDIMENTO HUMANO
+    return `👨‍🔧 ATENDIMENTO HUMANO
 
 Certo! Já avisei nossa equipe.
 
@@ -670,7 +670,7 @@ Aguarde um momento, por favor.`;
 function mensagemConfirmacaoServico(servico) {
   return `Você deseja seguir com este serviço?
 
-Serviço: ${servico}
+✅ Serviço: ${servico}
 
 Digite 1 para Tenho interesse
 Digite 2 para Estou a caminho
@@ -1085,12 +1085,12 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
 
   if (!deveEnviarAviso(`${clienteNumero}:atendente:${mensagemCliente}`)) return;
 
-  const texto = `Cliente precisa de atendimento
+  const texto = `🚨 Cliente precisa de atendimento
 
-Nome: ${nomeCliente || "Não informado"}
-Número: ${clienteNumero}
+👤 Nome: ${nomeCliente || "Não informado"}
+📱 Número: ${clienteNumero}
 
-Situação:
+📌 Situação:
 ${mensagemCliente || "Cliente solicitou atendimento"}
 
 Entre em contato com o cliente pelo WhatsApp.`;
@@ -1106,18 +1106,18 @@ async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensa
 
   if (!deveEnviarAviso(`${clienteNumero}:servico:${servico}`)) return;
 
-  const texto = `Novo cliente interessado
+  const texto = `🚨 Novo cliente interessado
 
-Nome: ${nomeCliente || "Não informado"}
-Número: ${clienteNumero}
+👤 Nome: ${nomeCliente || "Não informado"}
+📱 Número: ${clienteNumero}
 
-Serviço:
+✅ Serviço:
 ${servico}
 
-Ação:
+📌 Ação:
 Cliente pediu informações sobre este serviço.
 
-Mensagem original:
+💬 Mensagem original:
 ${mensagemOriginal || "Cliente selecionou o serviço pelo menu."}
 
 Entre em contato com o cliente pelo WhatsApp.`;
@@ -1133,18 +1133,18 @@ async function avisarAcaoServico(clienteNumero, nomeCliente, servico, acao, mens
 
   if (!deveEnviarAviso(`${clienteNumero}:acao:${acao}:${servico}`)) return;
 
-  const texto = `Atualização de atendimento
+  const texto = `🚨 Atualização de atendimento
 
-Nome: ${nomeCliente || "Não informado"}
-Número: ${clienteNumero}
+👤 Nome: ${nomeCliente || "Não informado"}
+📱 Número: ${clienteNumero}
 
-Serviço:
+✅ Serviço:
 ${servico}
 
-Ação:
+📌 Ação:
 ${acao}
 
-Mensagem original:
+💬 Mensagem original:
 ${mensagemOriginal || "Cliente respondeu ao atendimento automático."}
 
 Entre em contato com o cliente pelo WhatsApp.`;
@@ -1158,18 +1158,18 @@ async function avisarDadosDoCarro(clienteNumero, nomeCliente, servico, dadosCarr
     return;
   }
 
-  const texto = `Cliente enviou dados do veículo
+  const texto = `🚗 Cliente enviou dados do veículo
 
-Nome: ${nomeCliente || "Não informado"}
-Número: ${clienteNumero}
+👤 Nome: ${nomeCliente || "Não informado"}
+📱 Número: ${clienteNumero}
 
-Serviço de interesse:
+✅ Serviço de interesse:
 ${servico}
 
-Dados enviados:
+🚘 Dados enviados:
 ${dadosCarro}
 
-Próximo passo:
+📌 Próximo passo:
 Chamar o cliente e confirmar valor, prazo e documentos necessários.
 
 Entre em contato com o cliente pelo WhatsApp.`;
@@ -1254,16 +1254,16 @@ async function processarConfirmacaoServico(acao, jid, nomeCliente, opcaoServico)
 
     const texto = `Confirmado! Estamos te esperando.
 
-Serviço:
+✅ Serviço:
 ${servico}
 
-Endereço:
+📍 Endereço:
 ${ENDERECO_OFICINA}
 
-Abrir no Google Maps:
+🗺️ Abrir no Google Maps:
 ${LINK_MAPS}
 
-Horário:
+🕒 Horário:
 ${HORARIO_OFICINA}`;
 
     await responderERegistrar(jid, texto, opcaoServico);
@@ -1427,7 +1427,7 @@ async function handleIncomingMessage({ jid, text, pushName }) {
 
 Nossa equipe responderá assim que possível.
 
-Horário:
+🕒 Horário:
 ${HORARIO_OFICINA}`,
       opcao
     );
