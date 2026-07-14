@@ -4,6 +4,8 @@ const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID || process.env.SPREADSHEET_I
 const CONVERSATIONS_SHEET = process.env.SHEET_CONVERSAS || "Conversas";
 const LEADS_SHEET = process.env.SHEET_LEADS || "Leads";
 const VALUES_SHEET = process.env.SHEET_VALORES || "Valores";
+const HUMAN_SERVICE_SHEET = process.env.SHEET_ATENDIMENTO_HUMANO || "AtendimentoHumano";
+const HUMAN_SERVICE_HEADERS = ["Telefone", "Status", "Inicio", "ExpiraEm", "Atendente", "Observacao"];
 
 let sheetsClientPromise;
 
@@ -41,8 +43,57 @@ function formatDate(value) {
   return date.toISOString();
 }
 
-async function appendRow(sheetName, values) {
+async function getSpreadsheetMetadata(client) {
+  const response = await client.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID
+  });
+
+  return response.data;
+}
+
+async function ensureSheet(sheetName, headers = null) {
   const client = await getSheetsClient();
+  if (!client) return null;
+
+  const spreadsheet = await getSpreadsheetMetadata(client);
+  const existingSheet = spreadsheet.sheets?.find((sheet) => sheet.properties?.title === sheetName);
+
+  if (!existingSheet) {
+    await client.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title: sheetName
+              }
+            }
+          }
+        ]
+      }
+    });
+  }
+
+  if (headers) {
+    const rows = await getRows(sheetName);
+    if (!rows.length) {
+      await client.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A1:${String.fromCharCode(64 + headers.length)}1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: [headers]
+        }
+      });
+    }
+  }
+
+  return client;
+}
+
+async function appendRow(sheetName, values) {
+  const client = await ensureSheet(sheetName);
   if (!client) {
     console.warn("Google Sheets nao configurado. Defina GOOGLE_SHEETS_ID e as credenciais.");
     return;
@@ -78,9 +129,69 @@ async function getRows(sheetName) {
 
     return response.data.values || [];
   } catch (error) {
-    console.error(`Erro ao ler a aba ${sheetName}:`, error.message);
+    if (error.code !== 400) {
+      console.error(`Erro ao ler a aba ${sheetName}:`, error.message);
+    }
     return [];
   }
+}
+
+async function updateRow(sheetName, rowNumber, values) {
+  const client = await ensureSheet(sheetName);
+  if (!client) return;
+
+  await client.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${sheetName}!A${rowNumber}:Z${rowNumber}`,
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [values]
+    }
+  });
+}
+
+async function deleteRow(sheetName, rowNumber) {
+  const client = await ensureSheet(sheetName);
+  if (!client) return;
+
+  const spreadsheet = await getSpreadsheetMetadata(client);
+  const sheet = spreadsheet.sheets?.find((item) => item.properties?.title === sheetName);
+  const sheetId = sheet?.properties?.sheetId;
+  if (sheetId === undefined) return;
+
+  await client.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: rowNumber - 1,
+              endIndex: rowNumber
+            }
+          }
+        }
+      ]
+    }
+  });
+}
+
+function normalizePhone(phone) {
+  return String(phone || "").replace(/\D/g, "");
+}
+
+function parseHumanServiceRow(row, rowNumber) {
+  return {
+    rowNumber,
+    telefone: normalizePhone(row[0]),
+    status: row[1] || "",
+    inicio: row[2] || "",
+    expiraEm: row[3] || "",
+    atendente: row[4] || "",
+    observacao: row[5] || ""
+  };
 }
 
 async function appendConversation({ date, name, phone, message, matchedService, direction }) {
@@ -169,9 +280,160 @@ async function gerarRelatorioLeads() {
   return relatorio;
 }
 
+async function listarAtendimentosHumanos() {
+  await ensureSheet(HUMAN_SERVICE_SHEET, HUMAN_SERVICE_HEADERS);
+  const rows = await getRows(HUMAN_SERVICE_SHEET);
+
+  return rows.slice(1).map((row, index) => parseHumanServiceRow(row, index + 2));
+}
+
+async function buscarAtendimentoHumano(telefone) {
+  const phone = normalizePhone(telefone);
+  const atendimentos = await listarAtendimentosHumanos();
+
+  return atendimentos.find((item) => item.telefone === phone) || null;
+}
+
+async function finalizarAtendimentoHumano(atendimento, observacao = "Expirado automaticamente") {
+  if (!atendimento?.rowNumber) return;
+
+  await updateRow(HUMAN_SERVICE_SHEET, atendimento.rowNumber, [
+    atendimento.telefone,
+    "FINALIZADO",
+    atendimento.inicio,
+    atendimento.expiraEm,
+    atendimento.atendente,
+    observacao
+  ]);
+}
+
+async function salvarAtendimentoHumano({
+  telefone,
+  status,
+  inicio,
+  expiraEm,
+  atendente = "",
+  observacao = ""
+}) {
+  await ensureSheet(HUMAN_SERVICE_SHEET, HUMAN_SERVICE_HEADERS);
+  const phone = normalizePhone(telefone);
+  const existente = await buscarAtendimentoHumano(phone);
+  const values = [
+    phone,
+    status,
+    formatDate(inicio),
+    formatDate(expiraEm),
+    atendente || "",
+    observacao || ""
+  ];
+
+  if (existente) {
+    await updateRow(HUMAN_SERVICE_SHEET, existente.rowNumber, values);
+  } else {
+    await appendRow(HUMAN_SERVICE_SHEET, values);
+  }
+
+  return parseHumanServiceRow(values, existente?.rowNumber || null);
+}
+
+async function criarAtendimentoHumanoAguardando({ telefone, observacao = "Solicitou atendimento humano" }) {
+  const agora = new Date();
+  const expiraEm = new Date(agora.getTime() + 15 * 60 * 1000);
+
+  return salvarAtendimentoHumano({
+    telefone,
+    status: "AGUARDANDO",
+    inicio: agora,
+    expiraEm,
+    atendente: "",
+    observacao
+  });
+}
+
+async function ativarAtendimentoHumano({ telefone, atendente, observacao = "" }) {
+  const agora = new Date();
+  const expiraEm = new Date(agora.getTime() + 2 * 60 * 60 * 1000);
+
+  return salvarAtendimentoHumano({
+    telefone,
+    status: "ATIVO",
+    inicio: agora,
+    expiraEm,
+    atendente,
+    observacao
+  });
+}
+
+async function desativarAtendimentoHumano(telefone) {
+  const atendimento = await buscarAtendimentoHumano(telefone);
+  if (!atendimento) return false;
+
+  await deleteRow(HUMAN_SERVICE_SHEET, atendimento.rowNumber);
+  return true;
+}
+
+async function renovarAtendimentoHumano(telefone) {
+  const atendimento = await buscarAtendimentoHumano(telefone);
+  if (!atendimento) return null;
+
+  const base = new Date(atendimento.expiraEm);
+  const agora = new Date();
+  const inicioRenovacao = !Number.isNaN(base.getTime()) && base > agora ? base : agora;
+  const expiraEm = new Date(inicioRenovacao.getTime() + 2 * 60 * 60 * 1000);
+
+  await updateRow(HUMAN_SERVICE_SHEET, atendimento.rowNumber, [
+    atendimento.telefone,
+    "ATIVO",
+    atendimento.inicio || formatDate(agora),
+    formatDate(expiraEm),
+    atendimento.atendente,
+    atendimento.observacao
+  ]);
+
+  return {
+    ...atendimento,
+    status: "ATIVO",
+    expiraEm: formatDate(expiraEm)
+  };
+}
+
+async function statusAtendimentoHumano(telefone) {
+  const atendimento = await buscarAtendimentoHumano(telefone);
+  if (!atendimento) return null;
+
+  return atendimento;
+}
+
+async function atendimentoHumanoEstaAtivo(telefone) {
+  const atendimento = await buscarAtendimentoHumano(telefone);
+  if (!atendimento) return null;
+
+  const expiraEm = new Date(atendimento.expiraEm);
+  if (
+    ["ATIVO", "AGUARDANDO"].includes(atendimento.status) &&
+    !Number.isNaN(expiraEm.getTime()) &&
+    expiraEm > new Date()
+  ) {
+    return atendimento;
+  }
+
+  if (["ATIVO", "AGUARDANDO"].includes(atendimento.status)) {
+    await finalizarAtendimentoHumano(atendimento);
+  }
+
+  return null;
+}
+
 module.exports = {
   appendConversation,
   appendLead,
   getValores,
-  gerarRelatorioLeads
+  gerarRelatorioLeads,
+  criarAtendimentoHumanoAguardando,
+  ativarAtendimentoHumano,
+  desativarAtendimentoHumano,
+  buscarAtendimentoHumano,
+  renovarAtendimentoHumano,
+  statusAtendimentoHumano,
+  atendimentoHumanoEstaAtivo
 };

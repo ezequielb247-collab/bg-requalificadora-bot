@@ -126,6 +126,20 @@ function numeroClientePorJid(jid) {
   return String(jid || "").split("@")[0];
 }
 
+function telefoneLimpoPorJid(jid) {
+  return normalizarNumeroWhatsApp(numeroClientePorJid(jid));
+}
+
+function formatarContatoCliente(clienteNumero) {
+  const telefone = normalizarNumeroWhatsApp(clienteNumero);
+
+  return `📱 Cliente:
+${telefone}
+
+🔗 Abrir conversa:
+https://wa.me/${telefone}`;
+}
+
 function getAtendentes() {
   return ATENDENTE_NUMERO.split(",")
     .map((numero) => numero.trim())
@@ -657,11 +671,9 @@ Para ver o menu novamente, envie: menu`;
   }
 
   if (opcao === "9") {
-    return `👨‍🔧 ATENDIMENTO HUMANO
+    return `👨‍🔧 Você será atendido por um de nossos especialistas.
 
-Certo! Já avisei nossa equipe.
-
-Aguarde um momento, por favor.`;
+Aguarde um instante enquanto avisamos nossa equipe.`;
   }
 
   return null;
@@ -696,7 +708,7 @@ Escolha uma opção digitando o número:`;
 6. Limpeza arrefecimento
 7. Documentos
 8. Endereço e horário
-9. Falar atendente`;
+9. Falar com atendente`;
 }
 
 function textoTemAlgumaPalavra(texto, palavras) {
@@ -1068,6 +1080,15 @@ async function enviarParaAtendentes(texto) {
   }
 }
 
+async function responderComandoAtendente(jid, texto, fromMe) {
+  if (fromMe) {
+    await enviarParaAtendentes(texto);
+    return;
+  }
+
+  await sendTextMessage(jid, texto);
+}
+
 function deveEnviarAviso(chave) {
   const agora = Date.now();
   const ultimo = avisosRecentes.get(chave) || 0;
@@ -1088,12 +1109,38 @@ async function avisarAtendente(clienteNumero, nomeCliente, mensagemCliente) {
   const texto = `🚨 Cliente precisa de atendimento
 
 👤 Nome: ${nomeCliente || "Não informado"}
-📱 Número: ${clienteNumero}
+${formatarContatoCliente(clienteNumero)}
 
 📌 Situação:
 ${mensagemCliente || "Cliente solicitou atendimento"}
 
 Entre em contato com o cliente pelo WhatsApp.`;
+
+  await enviarParaAtendentes(texto);
+}
+
+async function avisarPedidoAtendimentoHumano(clienteNumero, nomeCliente, mensagemCliente) {
+  if (!ATENDENTE_NUMERO) {
+    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
+    return;
+  }
+
+  if (!deveEnviarAviso(`${clienteNumero}:pedido-humano:${mensagemCliente}`)) return;
+
+  const telefone = normalizarNumeroWhatsApp(clienteNumero);
+  const texto = `🚨 NOVO PEDIDO DE ATENDIMENTO HUMANO
+
+👤 Cliente:
+${nomeCliente || "Não informado"}
+
+📱 Telefone:
+${telefone}
+
+🔗 Abrir conversa:
+https://wa.me/${telefone}
+
+💬 Última mensagem:
+${mensagemCliente || "Cliente solicitou atendimento humano."}`;
 
   await enviarParaAtendentes(texto);
 }
@@ -1109,7 +1156,7 @@ async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensa
   const texto = `🚨 Novo cliente interessado
 
 👤 Nome: ${nomeCliente || "Não informado"}
-📱 Número: ${clienteNumero}
+${formatarContatoCliente(clienteNumero)}
 
 ✅ Serviço:
 ${servico}
@@ -1136,7 +1183,7 @@ async function avisarAcaoServico(clienteNumero, nomeCliente, servico, acao, mens
   const texto = `🚨 Atualização de atendimento
 
 👤 Nome: ${nomeCliente || "Não informado"}
-📱 Número: ${clienteNumero}
+${formatarContatoCliente(clienteNumero)}
 
 ✅ Serviço:
 ${servico}
@@ -1161,7 +1208,7 @@ async function avisarDadosDoCarro(clienteNumero, nomeCliente, servico, dadosCarr
   const texto = `🚗 Cliente enviou dados do veículo
 
 👤 Nome: ${nomeCliente || "Não informado"}
-📱 Número: ${clienteNumero}
+${formatarContatoCliente(clienteNumero)}
 
 ✅ Serviço de interesse:
 ${servico}
@@ -1313,6 +1360,159 @@ function getMessageText(message) {
   );
 }
 
+function ehComandoAtendimentoHumano(texto) {
+  return ["#assumir", "#liberar", "#status", "#renovar"].includes(normalizarTexto(texto));
+}
+
+function formatarDataAtendimentoHumano(value) {
+  if (!value) return "Não informado";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatarTempoRestante(expiraEm) {
+  const expireDate = new Date(expiraEm);
+  if (Number.isNaN(expireDate.getTime())) return "Não informado";
+
+  const diff = expireDate.getTime() - Date.now();
+  if (diff <= 0) return "Expirado";
+
+  const totalMinutes = Math.ceil(diff / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes} minuto(s)`;
+  return `${hours} hora(s) e ${minutes} minuto(s)`;
+}
+
+function montarStatusAtendimentoHumano(telefone, atendimento) {
+  if (!atendimento) {
+    return `🤖 Atendimento Humano
+
+Cliente:
+Telefone: ${telefone}
+
+Status:
+Sem atendimento humano ativo.
+
+Atendente:
+-
+
+Início:
+-
+
+Expira:
+-
+
+Tempo restante:
+-`;
+  }
+
+  return `🤖 Atendimento Humano
+
+Cliente:
+Telefone: ${telefone}
+
+Status:
+${atendimento.status || "Não informado"}
+
+Atendente:
+${atendimento.atendente || "Não informado"}
+
+Início:
+${formatarDataAtendimentoHumano(atendimento.inicio)}
+
+Expira:
+${formatarDataAtendimentoHumano(atendimento.expiraEm)}
+
+Tempo restante:
+${formatarTempoRestante(atendimento.expiraEm)}`;
+}
+
+async function processarComandoAtendimentoHumano({ jid, text, pushName, fromMe }) {
+  const comando = normalizarTexto(text);
+  if (!ehComandoAtendimentoHumano(comando)) return false;
+
+  const autorizado = (fromMe && getAtendentes().length > 0) || ehAtendente(jid);
+  if (!autorizado) return true;
+
+  const telefoneCliente = telefoneLimpoPorJid(jid);
+  const atendente = pushName || (fromMe ? "Atendente" : telefoneCliente);
+
+  if (comando === "#assumir") {
+    await sheets.ativarAtendimentoHumano({
+      telefone: telefoneCliente,
+      atendente,
+      observacao: ""
+    });
+
+    await responderComandoAtendente(
+      jid,
+      `🤖 Atendimento humano assumido.
+
+O bot ficará pausado por 2 horas.`,
+      fromMe
+    );
+
+    return true;
+  }
+
+  if (comando === "#liberar") {
+    await sheets.desativarAtendimentoHumano(telefoneCliente);
+
+    await responderComandoAtendente(jid, "🤖 Atendimento automático reativado.", fromMe);
+    return true;
+  }
+
+  if (comando === "#status") {
+    const atendimento = await sheets.statusAtendimentoHumano(telefoneCliente);
+    await responderComandoAtendente(
+      jid,
+      montarStatusAtendimentoHumano(telefoneCliente, atendimento),
+      fromMe
+    );
+    return true;
+  }
+
+  if (comando === "#renovar") {
+    const renovado = await sheets.renovarAtendimentoHumano(telefoneCliente);
+
+    if (!renovado) {
+      await responderComandoAtendente(
+        jid,
+        "🤖 Não encontrei atendimento humano ativo para renovar nesta conversa.",
+        fromMe
+      );
+      return true;
+    }
+
+    await responderComandoAtendente(
+      jid,
+      "🤖 Atendimento humano renovado por mais 2 horas.",
+      fromMe
+    );
+    return true;
+  }
+
+  return false;
+}
+
+async function atendimentoHumanoPausado(jid) {
+  const telefone = telefoneLimpoPorJid(jid);
+  const atendimento = await sheets.atendimentoHumanoEstaAtivo(telefone);
+  return Boolean(atendimento);
+}
+
 async function handleIncomingMessage({ jid, text, pushName }) {
   const from = numeroClientePorJid(jid);
   const nomeCliente = pushName || "";
@@ -1324,6 +1524,10 @@ async function handleIncomingMessage({ jid, text, pushName }) {
 
   if (ehAtendente(from) && ehPedidoRelatorio(text)) {
     await enviarRelatorioLeads(jid);
+    return;
+  }
+
+  if (await atendimentoHumanoPausado(jid)) {
     return;
   }
 
@@ -1449,7 +1653,11 @@ ${HORARIO_OFICINA}`,
   }
 
   if (opcao === "9") {
-    await avisarAtendente(from, nomeCliente, "Cliente solicitou atendimento humano.");
+    await sheets.criarAtendimentoHumanoAguardando({
+      telefone: from,
+      observacao: "Solicitou atendimento humano"
+    });
+    await avisarPedidoAtendimentoHumano(from, nomeCliente, text);
   }
 }
 
@@ -1509,9 +1717,19 @@ async function startWhatsApp() {
         const fromMe = message.key.fromMe;
         const text = getMessageText(message.message);
 
-        if (!jid || fromMe) continue;
+        if (!jid) continue;
         if (IGNORE_GROUPS && jid.endsWith("@g.us")) continue;
         if (!text) continue;
+
+        const comandoProcessado = await processarComandoAtendimentoHumano({
+          jid,
+          text,
+          pushName: message.pushName || "",
+          fromMe
+        });
+
+        if (comandoProcessado) continue;
+        if (fromMe) continue;
 
         await handleIncomingMessage({
           jid,
