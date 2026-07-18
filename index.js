@@ -43,6 +43,7 @@ const confirmacoesPendentes = new Map();
 const ultimasMensagens = new Map();
 const ultimoServicoPorCliente = new Map();
 const avisosRecentes = new Map();
+const telefonesReaisPorJid = new Map();
 
 function estaDentroDoHorario() {
   const agora = new Date();
@@ -123,7 +124,48 @@ function formatarJid(numeroOuJid) {
 }
 
 function numeroClientePorJid(jid) {
-  return String(jid || "").split("@")[0];
+  const jidTexto = String(jid || "").trim();
+  const telefoneMapeado = telefonesReaisPorJid.get(jidTexto);
+
+  if (telefoneMapeado) return telefoneMapeado;
+
+  return jidTexto.split("@")[0];
+}
+
+function extrairTelefoneRealDaMensagem(message) {
+  const candidatos = [
+    message?.key?.remoteJidAlt,
+    message?.key?.participantAlt,
+    message?.senderPn,
+    message?.key?.senderPn,
+    message?.key?.remoteJid,
+    message?.key?.participant
+  ];
+
+  for (const candidato of candidatos) {
+    const jidCandidato = String(candidato || "").trim();
+
+    if (jidCandidato.endsWith("@s.whatsapp.net")) {
+      const telefone = normalizarNumeroWhatsApp(jidCandidato.split("@")[0]);
+      if (telefone) return telefone;
+    }
+  }
+
+  return "";
+}
+
+function registrarTelefoneRealDaMensagem(message) {
+  const jidPrincipal = String(message?.key?.remoteJid || "").trim();
+  const telefoneReal = extrairTelefoneRealDaMensagem(message);
+
+  if (!jidPrincipal || !telefoneReal) return telefoneReal;
+
+  telefonesReaisPorJid.set(jidPrincipal, telefoneReal);
+
+  const jidAlternativo = String(message?.key?.remoteJidAlt || "").trim();
+  if (jidAlternativo) telefonesReaisPorJid.set(jidAlternativo, telefoneReal);
+
+  return telefoneReal;
 }
 
 function telefoneLimpoPorJid(jid) {
@@ -1718,6 +1760,11 @@ async function startWhatsApp() {
         const text = getMessageText(message.message);
 
         if (!jid) continue;
+
+        const telefoneReal = registrarTelefoneRealDaMensagem(message);
+        if (jid.endsWith("@lid") && !telefoneReal) {
+          console.warn("Não foi possível resolver o telefone real do JID LID:", jid);
+        }
         if (IGNORE_GROUPS && jid.endsWith("@g.us")) continue;
         if (!text) continue;
 
