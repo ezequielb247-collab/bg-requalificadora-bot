@@ -43,6 +43,9 @@ const confirmacoesPendentes = new Map();
 const ultimasMensagens = new Map();
 const ultimoServicoPorCliente = new Map();
 const avisosRecentes = new Map();
+const clientesQueJaReceberamMenu = new Set();
+const avisosMensagemNaoEntendidaPorDia = new Map();
+const respostasPalavrasChavePorDia = new Map();
 const telefonesReaisPorJid = new Map();
 
 function estaDentroDoHorario() {
@@ -89,6 +92,42 @@ function normalizarTexto(texto) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function ehComandoMenu(texto) {
+  const t = normalizarTexto(texto);
+  return ["menu", "inicio", "voltar"].includes(t);
+}
+
+
+function dataAtualBrasil() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function deveEnviarAvisoMensagemNaoEntendida(numeroCliente) {
+  const hoje = dataAtualBrasil();
+  const ultimaData = avisosMensagemNaoEntendidaPorDia.get(numeroCliente);
+
+  if (ultimaData === hoje) return false;
+
+  avisosMensagemNaoEntendidaPorDia.set(numeroCliente, hoje);
+  return true;
+}
+
+function deveResponderPalavraChaveHoje(numeroCliente, opcao) {
+  const hoje = dataAtualBrasil();
+  const chave = `${numeroCliente}:${opcao}`;
+  const ultimaData = respostasPalavrasChavePorDia.get(chave);
+
+  if (ultimaData === hoje) return false;
+
+  respostasPalavrasChavePorDia.set(chave, hoje);
+  return true;
 }
 
 function ehMensagemDuplicada(numero, texto) {
@@ -1645,24 +1684,51 @@ async function handleIncomingMessage({ jid, text, pushName }) {
     return;
   }
 
-  if (foraDoHorario && !opcao) {
-    await responderERegistrar(jid, montarMenu(mensagemForaDoHorario()), "menu");
+  const pediuMenuExplicitamente = ehComandoMenu(text);
+  const jaRecebeuMenu = clientesQueJaReceberamMenu.has(from);
+
+  if (!opcao) {
+    if (pediuMenuExplicitamente || !jaRecebeuMenu) {
+      const menu = foraDoHorario ? montarMenu(mensagemForaDoHorario()) : montarMenu();
+      await responderERegistrar(jid, menu, "menu");
+      clientesQueJaReceberamMenu.add(from);
+      return;
+    }
+
+    if (deveEnviarAvisoMensagemNaoEntendida(from)) {
+      await responderERegistrar(
+        jid,
+        "Não entendi sua mensagem. Para ver as opções novamente, envie *menu*.",
+        "invalido"
+      );
+    }
     return;
   }
 
-  if (!opcao) {
-    await responderERegistrar(jid, montarMenu(), "menu");
+  const opcaoNumericaDigitada = isExactMenuOption(text);
+  const foiAcionadoPorPalavraChave = !opcaoNumericaDigitada && opcao !== "invalido";
+
+  if (foiAcionadoPorPalavraChave && !deveResponderPalavraChaveHoje(from, opcao)) {
     return;
   }
 
   const resposta = await montarResposta(opcao);
 
   if (!resposta) {
-    const mensagemPadrao = foraDoHorario
-      ? mensagemForaDoHorario()
-      : "Não entendi sua mensagem.\n\nDigite menu para ver as opções de atendimento:";
+    if (!clientesQueJaReceberamMenu.has(from)) {
+      const menu = foraDoHorario ? montarMenu(mensagemForaDoHorario()) : montarMenu();
+      await responderERegistrar(jid, menu, "menu");
+      clientesQueJaReceberamMenu.add(from);
+      return;
+    }
 
-    await responderERegistrar(jid, montarMenu(mensagemPadrao), "menu");
+    if (deveEnviarAvisoMensagemNaoEntendida(from)) {
+      await responderERegistrar(
+        jid,
+        "Não entendi sua mensagem. Para ver as opções novamente, envie *menu*.",
+        "invalido"
+      );
+    }
     return;
   }
 
