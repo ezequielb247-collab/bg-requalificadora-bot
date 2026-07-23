@@ -1,5 +1,9 @@
 require("dotenv").config();
 
+const fs = require("fs");
+const path = require("path");
+const packageInfo = require("./package.json");
+
 const express = require("express");
 const QRCode = require("qrcode");
 const pino = require("pino");
@@ -19,6 +23,18 @@ const PORT = process.env.PORT || 3000;
 const SESSION_DIR = process.env.SESSION_DIR || "./auth_info_baileys";
 const IGNORE_GROUPS = (process.env.IGNORE_GROUPS || "true").toLowerCase() === "true";
 
+function numeroEnv(nome, padrao, minimo = 0) {
+  const valor = Number(process.env[nome]);
+  return Number.isFinite(valor) && valor >= minimo ? valor : padrao;
+}
+
+const RECONNECT_BASE_DELAY_MS = numeroEnv("RECONNECT_BASE_DELAY_MS", 3000, 500);
+const RECONNECT_MAX_DELAY_MS = numeroEnv("RECONNECT_MAX_DELAY_MS", 60000, 1000);
+const WATCHDOG_INTERVAL_MS = numeroEnv("WATCHDOG_INTERVAL_MS", 60000, 10000);
+const SEND_RETRY_ATTEMPTS = Math.floor(numeroEnv("SEND_RETRY_ATTEMPTS", 3, 1));
+const MESSAGE_ID_TTL_MS = numeroEnv("MESSAGE_ID_TTL_MS", 10 * 60 * 1000, 60000);
+const RUNTIME_STATE_FILE = path.join(SESSION_DIR, "runtime-state.json");
+
 const NOME_OFICINA = process.env.BUSINESS_NAME || process.env.NOME_OFICINA || "BG GNV Macaé";
 const ENDERECO_OFICINA =
   process.env.ENDERECO_OFICINA ||
@@ -33,10 +49,24 @@ const ATENDENTE_NUMERO =
   process.env.ATENDENTE_NUMERO || process.env.ATTENDANT_NUMBERS || "";
 
 let sock;
+let httpServer;
 let currentQr = null;
 let currentQrDataUrl = null;
 let connectionStatus = "iniciando";
 let lastConnectionUpdate = new Date().toISOString();
+let lastConnectionAttemptAt = null;
+let lastConnectedAt = null;
+let lastMessageReceivedAt = null;
+let lastMessageProcessedAt = null;
+let lastError = null;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+let watchdogTimer = null;
+let runtimeStateSaveTimer = null;
+let runtimeStateLoaded = false;
+let isStartingWhatsApp = false;
+let shuttingDown = false;
+let socketGeneration = 0;
 
 const ultimasMensagens = new Map();
 const avisosRecentes = new Map();
@@ -44,6 +74,257 @@ const clientesQueJaReceberamMenu = new Set();
 const avisosMensagemNaoEntendidaPorDia = new Map();
 const respostasPalavrasChavePorDia = new Map();
 const telefonesReaisPorJid = new Map();
+const mensagensProcessadasPorId = new Map();
+const filasPorConversa = new Map();
+
+
+function agoraIso() {
+  return new Date().toISOString();
+}
+
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function garantirDiretorioSessao() {
+  fs.mkdirSync(SESSION_DIR, { recursive: true });
+}
+
+function serializarErro(error) {
+  if (!error) return "Erro desconhecido";
+  return error.stack || error.message || String(error);
+}
+
+function erroCriptografiaIgnoravel(error) {
+  const texto = serializarErro(error).toLowerCase();
+  return [
+    "bad mac",
+    "no session",
+    "failed to decrypt",
+    "decrypt message",
+    "unsupported-chat",
+    "unsupported chat",
+    "prekey bundle",
+    "pre-key bundle"
+  ].some((trecho) => texto.includes(trecho));
+}
+
+function registrarErro(contexto, error) {
+  const mensagem = serializarErro(error);
+  lastError = {
+    contexto,
+    mensagem: error?.message || String(error || "Erro desconhecido"),
+    at: agoraIso()
+  };
+
+  if (erroCriptografiaIgnoravel(error)) {
+    console.warn(`[${contexto}] Erro de sincronizacao ignorado para manter o bot ativo:`, mensagem);
+    return;
+  }
+
+  console.error(`[${contexto}]`, mensagem);
+}
+
+function carregarEstadoRuntime() {
+  if (runtimeStateLoaded) return;
+  runtimeStateLoaded = true;
+
+  try {
+    garantirDiretorioSessao();
+    if (!fs.existsSync(RUNTIME_STATE_FILE)) return;
+
+    const estado = JSON.parse(fs.readFileSync(RUNTIME_STATE_FILE, "utf8"));
+    const hoje = dataAtualBrasil();
+
+    for (const [telefone, data] of Object.entries(estado.avisosMensagemNaoEntendidaPorDia || {})) {
+      if (data === hoje) avisosMensagemNaoEntendidaPorDia.set(telefone, data);
+    }
+
+    for (const [chave, data] of Object.entries(estado.respostasPalavrasChavePorDia || {})) {
+      if (data === hoje) respostasPalavrasChavePorDia.set(chave, data);
+    }
+  } catch (error) {
+    registrarErro("carregar-estado-runtime", error);
+  }
+}
+
+function salvarEstadoRuntime() {
+  try {
+    garantirDiretorioSessao();
+    const hoje = dataAtualBrasil();
+    const filtrarHoje = (mapa) => Object.fromEntries(
+      [...mapa.entries()].filter(([, data]) => data === hoje)
+    );
+
+    const estado = {
+      version: 1,
+      savedAt: agoraIso(),
+      avisosMensagemNaoEntendidaPorDia: filtrarHoje(avisosMensagemNaoEntendidaPorDia),
+      respostasPalavrasChavePorDia: filtrarHoje(respostasPalavrasChavePorDia)
+    };
+
+    const temporario = `${RUNTIME_STATE_FILE}.tmp`;
+    fs.writeFileSync(temporario, JSON.stringify(estado, null, 2), "utf8");
+    fs.renameSync(temporario, RUNTIME_STATE_FILE);
+  } catch (error) {
+    registrarErro("salvar-estado-runtime", error);
+  }
+}
+
+function agendarSalvarEstadoRuntime() {
+  if (runtimeStateSaveTimer) return;
+  runtimeStateSaveTimer = setTimeout(() => {
+    runtimeStateSaveTimer = null;
+    salvarEstadoRuntime();
+  }, 250);
+  runtimeStateSaveTimer.unref?.();
+}
+
+function limparCachesExpirados() {
+  const agora = Date.now();
+  const hoje = dataAtualBrasil();
+
+  for (const [chave, horario] of mensagensProcessadasPorId.entries()) {
+    if (agora - horario > MESSAGE_ID_TTL_MS) mensagensProcessadasPorId.delete(chave);
+  }
+
+  for (const [chave, valor] of ultimasMensagens.entries()) {
+    if (agora - valor.horario > 60 * 1000) ultimasMensagens.delete(chave);
+  }
+
+  for (const [chave, horario] of avisosRecentes.entries()) {
+    if (agora - horario > 60 * 1000) avisosRecentes.delete(chave);
+  }
+
+  for (const [chave, data] of avisosMensagemNaoEntendidaPorDia.entries()) {
+    if (data !== hoje) avisosMensagemNaoEntendidaPorDia.delete(chave);
+  }
+
+  for (const [chave, data] of respostasPalavrasChavePorDia.entries()) {
+    if (data !== hoje) respostasPalavrasChavePorDia.delete(chave);
+  }
+}
+
+function mensagemJaProcessada(message) {
+  const id = String(message?.key?.id || "").trim();
+  const jid = String(message?.key?.remoteJid || "").trim();
+  const participant = String(message?.key?.participant || "").trim();
+  if (!id || !jid) return false;
+
+  const chave = `${jid}:${participant}:${id}`;
+  const agora = Date.now();
+  const anterior = mensagensProcessadasPorId.get(chave);
+  if (anterior && agora - anterior < MESSAGE_ID_TTL_MS) return true;
+
+  mensagensProcessadasPorId.set(chave, agora);
+  return false;
+}
+
+function enfileirarPorConversa(jid, tarefa) {
+  const anterior = filasPorConversa.get(jid) || Promise.resolve();
+  let atual;
+
+  atual = anterior
+    .catch(() => undefined)
+    .then(tarefa)
+    .finally(() => {
+      if (filasPorConversa.get(jid) === atual) filasPorConversa.delete(jid);
+    });
+
+  filasPorConversa.set(jid, atual);
+  return atual;
+}
+
+function obterCodigoDesconexao(error) {
+  const candidatos = [
+    error?.output?.statusCode,
+    error?.cause?.output?.statusCode,
+    error?.data?.statusCode,
+    error?.statusCode
+  ];
+
+  for (const candidato of candidatos) {
+    const numero = Number(candidato);
+    if (Number.isFinite(numero)) return numero;
+  }
+
+  return null;
+}
+
+function nomeMotivoDesconexao(codigo) {
+  const nomes = Object.entries(DisconnectReason)
+    .find(([, valor]) => Number(valor) === Number(codigo));
+  return nomes?.[0] || "desconhecido";
+}
+
+function deveReconectar(codigo) {
+  const motivosTerminais = [
+    DisconnectReason.loggedOut,
+    DisconnectReason.badSession,
+    DisconnectReason.connectionReplaced,
+    DisconnectReason.multideviceMismatch
+  ].filter((valor) => Number.isFinite(Number(valor)));
+
+  return !motivosTerminais.includes(Number(codigo));
+}
+
+function calcularAtrasoReconexao(tentativa, aleatorio = Math.random()) {
+  const expoente = Math.max(0, Number(tentativa || 1) - 1);
+  const semJitter = Math.min(
+    RECONNECT_MAX_DELAY_MS,
+    RECONNECT_BASE_DELAY_MS * (2 ** expoente)
+  );
+  const jitter = Math.floor(Math.max(0, Math.min(1, aleatorio)) * 1000);
+  return Math.min(RECONNECT_MAX_DELAY_MS, semJitter + jitter);
+}
+
+function limparTimerReconexao() {
+  if (!reconnectTimer) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+}
+
+function agendarReconexao(motivo = "desconexao") {
+  if (shuttingDown || reconnectTimer) return;
+
+  reconnectAttempts += 1;
+  const atraso = calcularAtrasoReconexao(reconnectAttempts);
+  connectionStatus = "reconectando";
+  lastConnectionUpdate = agoraIso();
+
+  console.log(`Nova tentativa de conexao em ${atraso} ms. Motivo: ${motivo}.`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    startWhatsApp(`reconexao:${motivo}`).catch((error) => {
+      registrarErro("reconexao-whatsapp", error);
+      agendarReconexao("falha-ao-reconectar");
+    });
+  }, atraso);
+  reconnectTimer.unref?.();
+}
+
+function iniciarWatchdog() {
+  if (watchdogTimer) return;
+
+  watchdogTimer = setInterval(() => {
+    limparCachesExpirados();
+
+    if (shuttingDown || isStartingWhatsApp || reconnectTimer) return;
+
+    const estadosQuePrecisamReconexao = new Set([
+      "iniciando",
+      "desconectado",
+      "reconectando",
+      "erro"
+    ]);
+
+    if (!sock || estadosQuePrecisamReconexao.has(connectionStatus)) {
+      agendarReconexao("watchdog");
+    }
+  }, WATCHDOG_INTERVAL_MS);
+
+  watchdogTimer.unref?.();
+}
 
 function estaDentroDoHorario() {
   const agora = new Date();
@@ -107,16 +388,19 @@ function dataAtualBrasil() {
 }
 
 function deveEnviarAvisoMensagemNaoEntendida(numeroCliente) {
+  carregarEstadoRuntime();
   const hoje = dataAtualBrasil();
   const ultimaData = avisosMensagemNaoEntendidaPorDia.get(numeroCliente);
 
   if (ultimaData === hoje) return false;
 
   avisosMensagemNaoEntendidaPorDia.set(numeroCliente, hoje);
+  agendarSalvarEstadoRuntime();
   return true;
 }
 
 function deveResponderPalavraChaveHoje(numeroCliente, opcao) {
+  carregarEstadoRuntime();
   const hoje = dataAtualBrasil();
   const chave = `${numeroCliente}:${opcao}`;
   const ultimaData = respostasPalavrasChavePorDia.get(chave);
@@ -124,6 +408,7 @@ function deveResponderPalavraChaveHoje(numeroCliente, opcao) {
   if (ultimaData === hoje) return false;
 
   respostasPalavrasChavePorDia.set(chave, hoje);
+  agendarSalvarEstadoRuntime();
   return true;
 }
 
@@ -956,16 +1241,40 @@ function extrairOpcao(texto) {
 }
 
 async function sendTextMessage(to, text) {
-  if (!sock) return;
-  await sock.sendMessage(to, { text });
+  let ultimoErro;
+
+  for (let tentativa = 1; tentativa <= SEND_RETRY_ATTEMPTS; tentativa += 1) {
+    const socketAtual = sock;
+
+    if (!socketAtual || connectionStatus !== "conectado") {
+      ultimoErro = new Error(`WhatsApp indisponivel. Status: ${connectionStatus}`);
+    } else {
+      try {
+        return await socketAtual.sendMessage(to, { text });
+      } catch (error) {
+        ultimoErro = error;
+        registrarErro(`enviar-mensagem-tentativa-${tentativa}`, error);
+      }
+    }
+
+    if (tentativa < SEND_RETRY_ATTEMPTS) {
+      await esperar(Math.min(5000, 750 * (2 ** (tentativa - 1))));
+    }
+  }
+
+  throw ultimoErro || new Error("Nao foi possivel enviar a mensagem.");
 }
 
 async function enviarParaAtendentes(texto) {
   const atendentes = getAtendentes();
-  for (const atendente of atendentes) {
-    const jid = formatarJid(atendente);
-    if (jid) await sendTextMessage(jid, texto);
-  }
+
+  await Promise.allSettled(
+    atendentes.map(async (atendente) => {
+      const jid = formatarJid(atendente);
+      if (!jid) return;
+      await sendTextMessage(jid, texto);
+    })
+  );
 }
 
 async function responderComandoAtendente(jid, texto, fromMe) {
@@ -1060,17 +1369,61 @@ async function responderERegistrar(jid, texto, opcao = "") {
   await salvarResposta({ jid, mensagem: texto, opcao });
 }
 
-function getMessageText(message) {
-  if (!message) return "";
+function desembrulharMensagem(message) {
+  let conteudo = message;
 
-  return (
-    message.conversation ||
-    message.extendedTextMessage?.text ||
-    message.imageMessage?.caption ||
-    message.videoMessage?.caption ||
-    message.documentMessage?.caption ||
+  for (let i = 0; i < 5 && conteudo; i += 1) {
+    if (conteudo.ephemeralMessage?.message) {
+      conteudo = conteudo.ephemeralMessage.message;
+      continue;
+    }
+    if (conteudo.viewOnceMessage?.message) {
+      conteudo = conteudo.viewOnceMessage.message;
+      continue;
+    }
+    if (conteudo.viewOnceMessageV2?.message) {
+      conteudo = conteudo.viewOnceMessageV2.message;
+      continue;
+    }
+    if (conteudo.documentWithCaptionMessage?.message) {
+      conteudo = conteudo.documentWithCaptionMessage.message;
+      continue;
+    }
+    break;
+  }
+
+  return conteudo || {};
+}
+
+function getMessageText(message) {
+  const conteudo = desembrulharMensagem(message);
+
+  const respostaInterativa = conteudo.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+  let textoInterativo = "";
+  if (respostaInterativa) {
+    try {
+      const dados = JSON.parse(respostaInterativa);
+      textoInterativo = dados.id || dados.title || dados.display_text || "";
+    } catch {
+      textoInterativo = "";
+    }
+  }
+
+  return String(
+    conteudo.conversation ||
+    conteudo.extendedTextMessage?.text ||
+    conteudo.imageMessage?.caption ||
+    conteudo.videoMessage?.caption ||
+    conteudo.documentMessage?.caption ||
+    conteudo.buttonsResponseMessage?.selectedDisplayText ||
+    conteudo.buttonsResponseMessage?.selectedButtonId ||
+    conteudo.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    conteudo.listResponseMessage?.title ||
+    conteudo.templateButtonReplyMessage?.selectedDisplayText ||
+    conteudo.templateButtonReplyMessage?.selectedId ||
+    textoInterativo ||
     ""
-  );
+  ).trim();
 }
 
 function ehComandoAtendimentoHumano(texto) {
@@ -1326,91 +1679,195 @@ ${HORARIO_OFICINA}`,
   }
 }
 
-async function startWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+async function processarUmaMensagem(message) {
+  const jid = message?.key?.remoteJid;
+  const fromMe = Boolean(message?.key?.fromMe);
+  const text = getMessageText(message?.message);
 
-  sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    logger: pino({ level: process.env.LOG_LEVEL || "silent" }),
-    browser: [NOME_OFICINA, "Chrome", "1.0.0"]
+  if (!jid) return;
+
+  lastMessageReceivedAt = agoraIso();
+
+  const telefoneReal = registrarTelefoneRealDaMensagem(message);
+  if (jid.endsWith("@lid") && !telefoneReal) {
+    console.warn("Nao foi possivel resolver o telefone real do JID LID:", jid);
+  }
+  if (IGNORE_GROUPS && jid.endsWith("@g.us")) return;
+  if (!text) return;
+
+  const comandoProcessado = await processarComandoAtendimentoHumano({
+    jid,
+    text,
+    pushName: message.pushName || "",
+    fromMe
   });
 
-  sock.ev.on("creds.update", saveCreds);
+  if (comandoProcessado || fromMe) return;
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    lastConnectionUpdate = new Date().toISOString();
+  await handleIncomingMessage({
+    jid,
+    text,
+    pushName: message.pushName || ""
+  });
 
-    if (qr) {
-      currentQr = qr;
-      currentQrDataUrl = await QRCode.toDataURL(qr);
-      connectionStatus = "aguardando leitura do QR Code";
-      console.log("QR Code atualizado. Abra /qr no navegador.");
+  lastMessageProcessedAt = agoraIso();
+}
+
+async function processarMessagesUpsert({ messages, type }, geracao) {
+  if (geracao !== socketGeneration || type !== "notify") return;
+
+  const tarefas = [];
+
+  for (const message of messages || []) {
+    if (mensagemJaProcessada(message)) {
+      console.log("Mensagem repetida por ID ignorada:", message?.key?.id || "sem-id");
+      continue;
     }
 
-    if (connection === "open") {
+    const jid = message?.key?.remoteJid || "sem-jid";
+    tarefas.push(
+      enfileirarPorConversa(jid, async () => {
+        try {
+          await processarUmaMensagem(message);
+        } catch (error) {
+          registrarErro("processar-mensagem", error);
+        }
+      })
+    );
+  }
+
+  await Promise.allSettled(tarefas);
+}
+
+async function tratarAtualizacaoConexao(socketAtual, geracao, update) {
+  if (geracao !== socketGeneration) return;
+
+  const { connection, lastDisconnect, qr } = update || {};
+  lastConnectionUpdate = agoraIso();
+
+  if (qr) {
+    currentQr = qr;
+    connectionStatus = "aguardando leitura do QR Code";
+    try {
+      currentQrDataUrl = await QRCode.toDataURL(qr);
+    } catch (error) {
+      currentQrDataUrl = null;
+      registrarErro("gerar-qrcode", error);
+    }
+    console.log("QR Code atualizado. Abra /qr no navegador.");
+  }
+
+  if (connection === "connecting") {
+    connectionStatus = "conectando";
+  }
+
+  if (connection === "open") {
+    limparTimerReconexao();
+    currentQr = null;
+    currentQrDataUrl = null;
+    connectionStatus = "conectado";
+    reconnectAttempts = 0;
+    lastConnectedAt = agoraIso();
+    console.log("WhatsApp conectado.");
+  }
+
+  if (connection === "close") {
+    const codigo = obterCodigoDesconexao(lastDisconnect?.error);
+    const motivo = nomeMotivoDesconexao(codigo);
+    const reconectar = deveReconectar(codigo);
+
+    if (sock === socketAtual) sock = null;
+    try {
+      socketAtual.ev?.removeAllListeners?.();
+    } catch (error) {
+      registrarErro("limpar-listeners-socket", error);
+    }
+
+    connectionStatus = reconectar ? "reconectando" : "sessao precisa de novo QR Code";
+    console.log("Conexao encerrada.", { codigo, motivo, reconectar });
+
+    if (reconectar) {
+      agendarReconexao(`${motivo}:${codigo ?? "sem-codigo"}`);
+    } else {
       currentQr = null;
       currentQrDataUrl = null;
-      connectionStatus = "conectado";
-      console.log("WhatsApp conectado.");
+      console.warn("A sessao foi encerrada ou substituida. Remova a pasta da sessao somente se for vincular novamente pelo QR Code.");
     }
+  }
+}
 
-    if (connection === "close") {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+async function startWhatsApp(motivo = "inicializacao") {
+  if (shuttingDown || isStartingWhatsApp) return;
 
-      connectionStatus = shouldReconnect ? "reconectando" : "desconectado";
-      console.log("Conexão encerrada.", { statusCode, shouldReconnect });
+  isStartingWhatsApp = true;
+  limparTimerReconexao();
+  lastConnectionAttemptAt = agoraIso();
+  connectionStatus = "conectando";
+  const geracao = ++socketGeneration;
 
-      if (shouldReconnect) {
-        startWhatsApp().catch((error) => console.error("Erro ao reconectar:", error));
-      } else {
-        console.log("Sessão encerrada. Apague a pasta de sessão e leia um novo QR Code.");
-      }
-    }
-  });
+  try {
+    garantirDiretorioSessao();
 
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
-
-    for (const message of messages) {
+    if (sock) {
       try {
-        const jid = message.key.remoteJid;
-        const fromMe = message.key.fromMe;
-        const text = getMessageText(message.message);
-
-        if (!jid) continue;
-
-        const telefoneReal = registrarTelefoneRealDaMensagem(message);
-        if (jid.endsWith("@lid") && !telefoneReal) {
-          console.warn("Não foi possível resolver o telefone real do JID LID:", jid);
-        }
-        if (IGNORE_GROUPS && jid.endsWith("@g.us")) continue;
-        if (!text) continue;
-
-        const comandoProcessado = await processarComandoAtendimentoHumano({
-          jid,
-          text,
-          pushName: message.pushName || "",
-          fromMe
-        });
-
-        if (comandoProcessado) continue;
-        if (fromMe) continue;
-
-        await handleIncomingMessage({
-          jid,
-          text,
-          pushName: message.pushName || ""
-        });
+        sock.ev?.removeAllListeners?.();
+        sock.end?.(new Error("Recriando conexao do WhatsApp"));
       } catch (error) {
-        console.error("Erro ao processar mensagem:", error);
+        registrarErro("encerrar-socket-anterior", error);
       }
+      sock = null;
     }
-  });
+
+    const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
+    let version;
+
+    try {
+      ({ version } = await fetchLatestBaileysVersion());
+    } catch (error) {
+      registrarErro("consultar-versao-baileys", error);
+      console.warn("A versao mais recente nao foi consultada; o Baileys usara sua configuracao padrao.");
+    }
+
+    const configuracao = {
+      auth: state,
+      printQRInTerminal: false,
+      logger: pino({ level: process.env.LOG_LEVEL || "error" }),
+      browser: [NOME_OFICINA, "Chrome", packageInfo.version || "1.0.0"],
+      connectTimeoutMs: 60_000,
+      defaultQueryTimeoutMs: 60_000,
+      keepAliveIntervalMs: 25_000,
+      retryRequestDelayMs: 1_000,
+      markOnlineOnConnect: false,
+      syncFullHistory: false
+    };
+
+    if (version) configuracao.version = version;
+
+    const socketAtual = makeWASocket(configuracao);
+    sock = socketAtual;
+
+    socketAtual.ev.on("creds.update", () => {
+      Promise.resolve(saveCreds()).catch((error) => registrarErro("salvar-credenciais", error));
+    });
+
+    socketAtual.ev.on("connection.update", (update) => {
+      tratarAtualizacaoConexao(socketAtual, geracao, update)
+        .catch((error) => registrarErro("atualizacao-conexao", error));
+    });
+
+    socketAtual.ev.on("messages.upsert", (update) => {
+      processarMessagesUpsert(update, geracao)
+        .catch((error) => registrarErro("messages-upsert", error));
+    });
+
+    console.log(`Socket do WhatsApp iniciado. Motivo: ${motivo}.`);
+  } catch (error) {
+    connectionStatus = "erro";
+    registrarErro("iniciar-whatsapp", error);
+    agendarReconexao("erro-na-inicializacao");
+  } finally {
+    isStartingWhatsApp = false;
+  }
 }
 
 app.get("/", (req, res) => {
@@ -1492,16 +1949,128 @@ app.get("/politica-de-privacidade", (req, res) => {
 </html>`);
 });
 
-app.get("/health", (req, res) => {
-  res.json({
+function montarHealthCheck() {
+  return {
     ok: true,
-    whatsapp: connectionStatus,
-    hasQr: Boolean(currentQr),
-    updatedAt: lastConnectionUpdate
-  });
+    version: packageInfo.version || "1.0.0",
+    uptimeSeconds: Math.floor(process.uptime()),
+    whatsapp: {
+      status: connectionStatus,
+      connected: connectionStatus === "conectado",
+      hasQr: Boolean(currentQr),
+      reconnectAttempts,
+      lastConnectionAttemptAt,
+      lastConnectedAt,
+      lastConnectionUpdate
+    },
+    processing: {
+      activeConversationQueues: filasPorConversa.size,
+      rememberedMessageIds: mensagensProcessadasPorId.size,
+      lastMessageReceivedAt,
+      lastMessageProcessedAt
+    },
+    session: {
+      directory: SESSION_DIR,
+      exists: fs.existsSync(SESSION_DIR),
+      persistentDiskRecommended: Boolean(process.env.RENDER)
+    },
+    lastError
+  };
+}
+
+app.get("/health", (req, res) => {
+  res.status(200).json(montarHealthCheck());
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor iniciado na porta ${PORT}. Abra /qr para conectar o WhatsApp.`);
-  startWhatsApp().catch((error) => console.error("Erro ao iniciar WhatsApp:", error));
+app.get("/api/health", (req, res) => {
+  res.status(200).json(montarHealthCheck());
 });
+
+async function encerrarAplicacao(sinal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Encerrando aplicacao com seguranca. Sinal: ${sinal}.`);
+
+  limparTimerReconexao();
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  if (runtimeStateSaveTimer) clearTimeout(runtimeStateSaveTimer);
+  salvarEstadoRuntime();
+
+  try {
+    sock?.ev?.removeAllListeners?.();
+    sock?.end?.(new Error(`Aplicacao encerrada por ${sinal}`));
+  } catch (error) {
+    registrarErro("encerrar-socket", error);
+  }
+
+  if (httpServer) {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+}
+
+function registrarTratadoresProcesso() {
+  process.on("unhandledRejection", (error) => {
+    registrarErro("unhandled-rejection", error);
+  });
+
+  process.on("uncaughtException", (error) => {
+    registrarErro("uncaught-exception", error);
+    if (erroCriptografiaIgnoravel(error)) return;
+
+    encerrarAplicacao("uncaughtException")
+      .finally(() => setTimeout(() => process.exit(1), 250));
+  });
+
+  for (const sinal of ["SIGTERM", "SIGINT"]) {
+    process.on(sinal, () => {
+      encerrarAplicacao(sinal)
+        .finally(() => process.exit(0));
+    });
+  }
+}
+
+function iniciarAplicacao() {
+  carregarEstadoRuntime();
+  registrarTratadoresProcesso();
+  iniciarWatchdog();
+
+  if (process.env.RENDER && !path.resolve(SESSION_DIR).startsWith("/var/data")) {
+    console.warn("ATENCAO: no Render, configure SESSION_DIR=/var/data/auth_info_baileys e monte o Persistent Disk em /var/data.");
+  }
+
+  httpServer = app.listen(PORT, () => {
+    console.log(`Servidor iniciado na porta ${PORT}. Abra /qr para conectar o WhatsApp.`);
+
+    if ((process.env.SKIP_WHATSAPP_START || "false").toLowerCase() !== "true") {
+      startWhatsApp().catch((error) => registrarErro("inicio-whatsapp", error));
+    } else {
+      connectionStatus = "inicio do WhatsApp desativado para teste";
+    }
+  });
+
+  return httpServer;
+}
+
+if (require.main === module) {
+  iniciarAplicacao();
+}
+
+module.exports = {
+  app,
+  iniciarAplicacao,
+  startWhatsApp,
+  montarHealthCheck,
+  getMessageText,
+  desembrulharMensagem,
+  mensagemJaProcessada,
+  enfileirarPorConversa,
+  obterCodigoDesconexao,
+  deveReconectar,
+  calcularAtrasoReconexao,
+  erroCriptografiaIgnoravel,
+  deveEnviarAvisoMensagemNaoEntendida,
+  deveResponderPalavraChaveHoje,
+  salvarEstadoRuntime,
+  normalizarTexto,
+  extrairOpcao
+};

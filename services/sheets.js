@@ -27,12 +27,17 @@ async function getSheetsClient() {
       scopes: ["https://www.googleapis.com/auth/spreadsheets"]
     });
 
-    sheetsClientPromise = auth.getClient().then((authClient) =>
-      google.sheets({
-        version: "v4",
-        auth: authClient
-      })
-    );
+    sheetsClientPromise = auth.getClient()
+      .then((authClient) =>
+        google.sheets({
+          version: "v4",
+          auth: authClient
+        })
+      )
+      .catch((error) => {
+        sheetsClientPromise = null;
+        throw error;
+      });
   }
 
   return sheetsClientPromise;
@@ -93,13 +98,13 @@ async function ensureSheet(sheetName, headers = null) {
 }
 
 async function appendRow(sheetName, values) {
-  const client = await ensureSheet(sheetName);
-  if (!client) {
-    console.warn("Google Sheets nao configurado. Defina GOOGLE_SHEETS_ID e as credenciais.");
-    return;
-  }
-
   try {
+    const client = await ensureSheet(sheetName);
+    if (!client) {
+      console.warn("Google Sheets nao configurado. Defina GOOGLE_SHEETS_ID e as credenciais.");
+      return false;
+    }
+
     await client.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `${sheetName}!A:Z`,
@@ -109,8 +114,11 @@ async function appendRow(sheetName, values) {
         values: [values]
       }
     });
+
+    return true;
   } catch (error) {
     console.error(`Erro ao salvar na aba ${sheetName}:`, error.message);
+    return false;
   }
 }
 

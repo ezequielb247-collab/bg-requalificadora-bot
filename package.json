@@ -1,11 +1,13 @@
 {
   "name": "whatsapp-baileys-bot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Bot de WhatsApp via QR Code usando Baileys, Express e Google Sheets.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check index.js && node --check services/sheets.js"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
