@@ -38,10 +38,7 @@ let currentQrDataUrl = null;
 let connectionStatus = "iniciando";
 let lastConnectionUpdate = new Date().toISOString();
 
-const pendingLeads = new Map();
-const confirmacoesPendentes = new Map();
 const ultimasMensagens = new Map();
-const ultimoServicoPorCliente = new Map();
 const avisosRecentes = new Map();
 const clientesQueJaReceberamMenu = new Set();
 const avisosMensagemNaoEntendidaPorDia = new Map();
@@ -393,158 +390,6 @@ async function carregarValores() {
   };
 }
 
-function nomeServicoPorOpcao(opcao) {
-  const servicos = {
-    "1": "Reteste de cilindro de GNV",
-    "2": "Retirada de kit GNV",
-    "3": "Revisão de kit GNV",
-    "4": "Instalação de kit GNV",
-    "5": "Limpeza de bico",
-    "6": "Limpeza do sistema de arrefecimento"
-  };
-
-  return servicos[opcao] || "Serviço";
-}
-
-function mensagemPedidoDadosPorServico(opcaoServico, servico) {
-  const mensagens = {
-    "1": `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo e ano do carro
-2. Quantidade de cilindros, se souber
-3. Se o cilindro já está vencido ou perto de vencer, se souber
-
-Exemplo:
-Civic 2015, 1 cilindro, vencendo esse mês
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "2": `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo e ano do carro
-2. Se o kit é 3ª ou 5ª geração, se souber
-
-Exemplo:
-Palio 2014, kit 5ª geração
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "3": `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo e ano do carro
-2. Se o kit é 3ª ou 5ª geração, se souber
-
-Exemplo:
-Onix 2018, kit 5ª geração
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "4": `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo e ano do carro
-2. Se será instalação nova ou se já possui algum kit
-
-Exemplo:
-HB20 2020, instalação nova
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "5": `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo e ano do carro
-2. Se deseja limpeza preventiva ou se o carro está com falha, se souber
-
-Exemplo:
-Onix 2018, limpeza preventiva
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`,
-    "6": `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Para nossa equipe te atender melhor, envie por favor:
-
-1. Modelo e ano do carro
-2. Se o carro está baixando água, aquecendo ou se é limpeza preventiva, se souber
-
-Exemplo:
-Civic 2015, limpeza preventiva do arrefecimento
-
-Nossa equipe recebeu sua solicitação e entrará em contato pelo WhatsApp.`
-  };
-
-  return (
-    mensagens[opcaoServico] ||
-    `✅ Interesse registrado!
-
-Serviço:
-${servico}
-
-Envie o modelo e ano do carro para nossa equipe te atender melhor.`
-  );
-}
-
-function mensagemDadosRecebidos(opcaoServico, servico, dadosCarro) {
-  const documentosPorServico = {
-    "1": `Enquanto isso, deixe separado se possível:
-
-- Documento do carro
-- Documento do GNV, se tiver
-- Informação da quantidade de cilindros, se souber`,
-    "2": `Enquanto isso, deixe separado se possível:
-
-- Documento do carro
-- Documento do GNV, se tiver
-- Informação se o kit é 3ª ou 5ª geração, se souber`,
-    "3": `Enquanto isso, deixe separado se possível:
-
-- Documento do carro
-- Informação se o kit é 3ª ou 5ª geração, se souber`,
-    "4": "Nossa equipe vai analisar o veículo e orientar sobre valores, documentos e prazo.",
-    "6": "A limpeza do sistema de arrefecimento é feita com máquina e já inclui o aditivo."
-  };
-
-  return `✅ Informações recebidas!
-
-Nossa equipe já recebeu os dados do seu veículo e vai te chamar pelo WhatsApp.
-
-Serviço:
-${servico}
-
-🚘 Dados enviados:
-${dadosCarro}
-
-${documentosPorServico[opcaoServico] || ""}
-
-📍 Endereço:
-${ENDERECO_OFICINA}
-
-🗺️ Abrir no Google Maps:
-${LINK_MAPS}`.trim();
-}
-
 async function montarResposta(opcao) {
   const valores = await carregarValores();
 
@@ -758,16 +603,6 @@ Aguarde um instante enquanto avisamos nossa equipe.`;
   }
 
   return null;
-}
-
-function mensagemConfirmacaoServico(servico) {
-  return `Você deseja seguir com este serviço?
-
-✅ Serviço: ${servico}
-
-Digite 1 para Tenho interesse
-Digite 2 para Estou a caminho
-Digite 0 para Cancelar e voltar ao menu`;
 }
 
 function montarMenu(mensagemInicial = null) {
@@ -1091,34 +926,6 @@ function isExactMenuOption(text) {
   return /^[1-9]$/.test(normalized) ? normalized : null;
 }
 
-function ehComandoTenhoInteresse(texto) {
-  const t = normalizarTexto(texto);
-  return (
-    t === "tenho interesse" ||
-    t === "quero agendar" ||
-    t === "quero fazer" ||
-    t === "quero atendimento" ||
-    t === "quero marcar" ||
-    t === "preciso agendar" ||
-    t === "preciso fazer" ||
-    t.includes("tenho interesse") ||
-    t.includes("quero agendar") ||
-    t.includes("quero fazer")
-  );
-}
-
-function ehComandoEstouACaminho(texto) {
-  const t = normalizarTexto(texto);
-  return (
-    t === "estou a caminho" ||
-    t === "to a caminho" ||
-    t === "estou indo" ||
-    t === "to indo" ||
-    t === "vou ai" ||
-    t.includes("estou a caminho")
-  );
-}
-
 function extrairOpcao(texto) {
   const textoLimpo = String(texto || "").trim();
   const opcaoExata = isExactMenuOption(textoLimpo);
@@ -1226,85 +1033,6 @@ ${mensagemCliente || "Cliente solicitou atendimento humano."}`;
   await enviarParaAtendentes(texto);
 }
 
-async function avisarInteresseServico(clienteNumero, nomeCliente, servico, mensagemOriginal) {
-  if (!ATENDENTE_NUMERO) {
-    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
-    return;
-  }
-
-  if (!deveEnviarAviso(`${clienteNumero}:servico:${servico}`)) return;
-
-  const texto = `🚨 Novo cliente interessado
-
-👤 Nome: ${nomeCliente || "Não informado"}
-${formatarContatoCliente(clienteNumero)}
-
-✅ Serviço:
-${servico}
-
-📌 Ação:
-Cliente pediu informações sobre este serviço.
-
-💬 Mensagem original:
-${mensagemOriginal || "Cliente selecionou o serviço pelo menu."}
-
-Entre em contato com o cliente pelo WhatsApp.`;
-
-  await enviarParaAtendentes(texto);
-}
-
-async function avisarAcaoServico(clienteNumero, nomeCliente, servico, acao, mensagemOriginal) {
-  if (!ATENDENTE_NUMERO) {
-    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
-    return;
-  }
-
-  if (!deveEnviarAviso(`${clienteNumero}:acao:${acao}:${servico}`)) return;
-
-  const texto = `🚨 Atualização de atendimento
-
-👤 Nome: ${nomeCliente || "Não informado"}
-${formatarContatoCliente(clienteNumero)}
-
-✅ Serviço:
-${servico}
-
-📌 Ação:
-${acao}
-
-💬 Mensagem original:
-${mensagemOriginal || "Cliente respondeu ao atendimento automático."}
-
-Entre em contato com o cliente pelo WhatsApp.`;
-
-  await enviarParaAtendentes(texto);
-}
-
-async function avisarDadosDoCarro(clienteNumero, nomeCliente, servico, dadosCarro) {
-  if (!ATENDENTE_NUMERO) {
-    console.log("ATENDENTE_NUMERO ou ATTENDANT_NUMBERS não configurado.");
-    return;
-  }
-
-  const texto = `🚗 Cliente enviou dados do veículo
-
-👤 Nome: ${nomeCliente || "Não informado"}
-${formatarContatoCliente(clienteNumero)}
-
-✅ Serviço de interesse:
-${servico}
-
-🚘 Dados enviados:
-${dadosCarro}
-
-📌 Próximo passo:
-Chamar o cliente e confirmar valor, prazo e documentos necessários.
-
-Entre em contato com o cliente pelo WhatsApp.`;
-
-  await enviarParaAtendentes(texto);
-}
-
 async function salvarConversa({ jid, nome, mensagem, opcao }) {
   await sheets.appendConversation({
     date: new Date(),
@@ -1327,105 +1055,9 @@ async function salvarResposta({ jid, mensagem, opcao }) {
   });
 }
 
-async function salvarLead({ jid, nome, servico, dadosCarro }) {
-  await sheets.appendLead({
-    date: new Date(),
-    name: nome || "",
-    phone: numeroClientePorJid(jid),
-    service: servico,
-    message: dadosCarro
-  });
-}
-
 async function responderERegistrar(jid, texto, opcao = "") {
   await sendTextMessage(jid, texto);
   await salvarResposta({ jid, mensagem: texto, opcao });
-}
-
-async function processarDadosDoCarroSePendente(jid, nomeCliente, textoCliente) {
-  const pendente = pendingLeads.get(jid);
-  if (!pendente) return false;
-
-  const texto = String(textoCliente || "").trim();
-  const textoMinusculo = normalizarTexto(texto);
-  if (!texto) return false;
-
-  if (["0", "cancelar", "menu", "voltar", "inicio"].includes(textoMinusculo)) {
-    pendingLeads.delete(jid);
-    confirmacoesPendentes.delete(jid);
-    await responderERegistrar(
-      jid,
-      montarMenu("Atendimento cancelado. Escolha uma nova opção digitando o número:"),
-      "menu"
-    );
-    return true;
-  }
-
-  await responderERegistrar(
-    jid,
-    mensagemDadosRecebidos(pendente.opcaoServico, pendente.servico, texto),
-    pendente.opcaoServico
-  );
-
-  await avisarDadosDoCarro(numeroClientePorJid(jid), nomeCliente, pendente.servico, texto);
-  await salvarLead({ jid, nome: nomeCliente, servico: pendente.servico, dadosCarro: texto });
-
-  pendingLeads.delete(jid);
-  return true;
-}
-
-async function processarConfirmacaoServico(acao, jid, nomeCliente, opcaoServico) {
-  const servico = nomeServicoPorOpcao(opcaoServico);
-
-  if (acao === "caminho") {
-    pendingLeads.delete(jid);
-
-    const texto = `Confirmado! Estamos te esperando.
-
-✅ Serviço:
-${servico}
-
-📍 Endereço:
-${ENDERECO_OFICINA}
-
-🗺️ Abrir no Google Maps:
-${LINK_MAPS}
-
-🕒 Horário:
-${HORARIO_OFICINA}`;
-
-    await responderERegistrar(jid, texto, opcaoServico);
-    await avisarAcaoServico(
-      numeroClientePorJid(jid),
-      nomeCliente,
-      servico,
-      'Cliente digitou "Estou a caminho".',
-      "Estou a caminho"
-    );
-
-    return true;
-  }
-
-  if (acao === "interesse") {
-    pendingLeads.set(jid, {
-      servico,
-      opcaoServico,
-      criadoEm: new Date().toISOString()
-    });
-
-    await responderERegistrar(jid, mensagemPedidoDadosPorServico(opcaoServico, servico), opcaoServico);
-    await avisarAcaoServico(
-      numeroClientePorJid(jid),
-      nomeCliente,
-      servico,
-      'Cliente digitou "Tenho interesse" e o bot pediu as informações corretas do veículo.',
-      "Tenho interesse"
-    );
-
-    return true;
-  }
-
-  return false;
 }
 
 function getMessageText(message) {
@@ -1619,70 +1251,8 @@ async function handleIncomingMessage({ jid, text, pushName }) {
     opcao: "recebida"
   });
 
-  const resolveuPendente = await processarDadosDoCarroSePendente(jid, nomeCliente, text);
-  if (resolveuPendente) return;
-
-  const confirmacaoPendente = confirmacoesPendentes.get(jid);
-  const textoNormalizado = normalizarTexto(text);
-
-  if (confirmacaoPendente && textoNormalizado === "1") {
-    confirmacoesPendentes.delete(jid);
-    await processarConfirmacaoServico("interesse", jid, nomeCliente, confirmacaoPendente.opcaoServico);
-    return;
-  }
-
-  if (confirmacaoPendente && textoNormalizado === "2") {
-    confirmacoesPendentes.delete(jid);
-    await processarConfirmacaoServico("caminho", jid, nomeCliente, confirmacaoPendente.opcaoServico);
-    return;
-  }
-
-  if (confirmacaoPendente && textoNormalizado === "0") {
-    confirmacoesPendentes.delete(jid);
-    pendingLeads.delete(jid);
-
-    await responderERegistrar(
-      jid,
-      montarMenu("Atendimento cancelado. Tudo bem!\n\nEscolha uma nova opção digitando o número:"),
-      "menu"
-    );
-
-    return;
-  }
-
-  if (
-    confirmacaoPendente &&
-    ["cancelar", "menu", "voltar", "inicio"].includes(textoNormalizado)
-  ) {
-    confirmacoesPendentes.delete(jid);
-    pendingLeads.delete(jid);
-
-    await responderERegistrar(
-      jid,
-      montarMenu("Atendimento cancelado. Escolha uma nova opção digitando o número:"),
-      "menu"
-    );
-
-    return;
-  }
-
   const foraDoHorario = !estaDentroDoHorario();
   const opcao = extrairOpcao(text);
-  const ultimoServico = ultimoServicoPorCliente.get(jid);
-
-  if (ehComandoEstouACaminho(text)) {
-    const opcaoServico = ultimoServico || "9";
-    confirmacoesPendentes.delete(jid);
-    await processarConfirmacaoServico("caminho", jid, nomeCliente, opcaoServico);
-    return;
-  }
-
-  if (ehComandoTenhoInteresse(text)) {
-    const opcaoServico = ultimoServico || (opcao && /^[1-6]$/.test(opcao) ? opcao : "9");
-    confirmacoesPendentes.delete(jid);
-    await processarConfirmacaoServico("interesse", jid, nomeCliente, opcaoServico);
-    return;
-  }
 
   const pediuMenuExplicitamente = ehComandoMenu(text);
   const jaRecebeuMenu = clientesQueJaReceberamMenu.has(from);
@@ -1746,19 +1316,6 @@ ${HORARIO_OFICINA}`,
   }
 
   await responderERegistrar(jid, resposta, opcao);
-
-  if (["1", "2", "3", "4", "5", "6"].includes(opcao)) {
-    const servico = nomeServicoPorOpcao(opcao);
-    ultimoServicoPorCliente.set(jid, opcao);
-
-    await avisarInteresseServico(from, nomeCliente, servico, text);
-    await responderERegistrar(jid, mensagemConfirmacaoServico(servico), opcao);
-    confirmacoesPendentes.set(jid, {
-      opcaoServico: opcao,
-      servico,
-      criadoEm: new Date().toISOString()
-    });
-  }
 
   if (opcao === "9") {
     await sheets.criarAtendimentoHumanoAguardando({
