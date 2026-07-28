@@ -372,6 +372,26 @@ async function ativarAtendimentoHumano({ telefone, atendente, observacao = "" })
   });
 }
 
+
+async function assumirOuRenovarAtendimentoHumano({
+  telefone,
+  atendente = "Atendente",
+  observacao = "Atendente respondeu manualmente"
+}) {
+  const agora = new Date();
+  const expiraEm = new Date(agora.getTime() + 2 * 60 * 60 * 1000);
+  const existente = await buscarAtendimentoHumano(telefone);
+
+  return salvarAtendimentoHumano({
+    telefone,
+    status: "ATIVO",
+    inicio: existente?.inicio || agora,
+    expiraEm,
+    atendente: atendente || existente?.atendente || "Atendente",
+    observacao: observacao || existente?.observacao || ""
+  });
+}
+
 async function desativarAtendimentoHumano(telefone) {
   const atendimento = await buscarAtendimentoHumano(telefone);
   if (!atendimento) return false;
@@ -439,6 +459,7 @@ module.exports = {
   gerarRelatorioLeads,
   criarAtendimentoHumanoAguardando,
   ativarAtendimentoHumano,
+  assumirOuRenovarAtendimentoHumano,
   desativarAtendimentoHumano,
   buscarAtendimentoHumano,
   renovarAtendimentoHumano,

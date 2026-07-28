@@ -15,6 +15,8 @@ Versão do bot da BG GNV sem a etapa “Tenho interesse / Estou a caminho” e c
 - Health check detalhado em `/health` e `/api/health`.
 - As limitações diárias de palavras-chave e mensagem não entendida ficam salvas dentro da pasta de sessão e sobrevivem a reinícios quando há Persistent Disk.
 - Falha ao registrar uma conversa no Google Sheets não impede o bot de responder ao cliente.
+- Pausa automática ao detectar mídia do cliente ou resposta manual do atendente.
+- Controle em memória e no Google Sheets para impedir que o bot entre no meio do atendimento humano.
 
 ## Fluxo atual
 
@@ -28,6 +30,33 @@ Você deseja seguir com este serviço?
 ```
 
 A opção `9 - Falar com atendente` e os comandos de atendimento humano continuam ativos.
+
+
+## Conciliação entre bot e atendente
+
+O bot agora pausa automaticamente a conversa quando ocorre uma destas situações:
+
+- o cliente envia áudio, imagem, vídeo, documento, figurinha, localização ou contato;
+- um atendente envia qualquer mensagem manualmente pelo WhatsApp Web, Desktop ou celular vinculado.
+
+Quando o cliente envia uma mídia e ainda não existe atendimento humano ativo, ele recebe uma única mensagem:
+
+```text
+Recebemos sua mensagem. Um atendente continuará o atendimento por aqui.
+```
+
+Depois disso, o bot fica em silêncio naquela conversa. Cada nova mensagem manual do atendente renova a pausa por 2 horas a partir daquele momento. As mensagens enviadas automaticamente pelo próprio bot são identificadas pelo ID e pelo conteúdo recente, para não serem confundidas com intervenção humana.
+
+Comandos disponíveis:
+
+```text
+#assumir
+#status
+#renovar
+#liberar
+```
+
+A pausa também fica salva em `runtime-state.json` dentro da pasta de sessão. Com Persistent Disk, ela sobrevive a reinicializações do Render.
 
 ## Render
 
@@ -77,7 +106,10 @@ Os testes verificam:
 - gravação do estado diário;
 - classificação de erros de criptografia;
 - health check;
-- ausência do fluxo antigo de confirmação.
+- ausência do fluxo antigo de confirmação;
+- reconhecimento de mídias;
+- identificação de mensagens automáticas do próprio bot;
+- pausa automática por intervenção humana.
 
 Execute:
 

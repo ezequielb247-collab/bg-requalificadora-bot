@@ -10,6 +10,7 @@ const { DisconnectReason } = require("@whiskeysockets/baileys");
 const sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), "bg-gnv-test-"));
 process.env.SESSION_DIR = sessionDir;
 process.env.SKIP_WHATSAPP_START = "true";
+process.env.ATTENDANT_NUMBERS = "5522000000000";
 
 const bot = require("../index");
 
@@ -88,8 +89,9 @@ test("estado diario e gravado dentro da pasta de sessao", () => {
   const stateFile = path.join(sessionDir, "runtime-state.json");
   assert.equal(fs.existsSync(stateFile), true);
   const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-  assert.equal(state.version, 1);
+  assert.equal(state.version, 2);
   assert.equal(typeof state.respostasPalavrasChavePorDia, "object");
+  assert.equal(typeof state.pausasHumanas, "object");
 });
 
 test("erros conhecidos de criptografia sao classificados sem derrubar o bot", () => {
@@ -111,4 +113,95 @@ test("fluxo antigo de confirmacao foi removido", () => {
   assert.equal(source.includes("Você deseja seguir com este serviço?"), false);
   assert.equal(source.includes("mensagemConfirmacaoServico"), false);
   assert.equal(source.includes("confirmacoesPendentes"), false);
+});
+
+
+test("reconhece midias que exigem atendimento humano", () => {
+  assert.deepEqual(bot.identificarTipoMidia({ audioMessage: { ptt: true } }), {
+    tipo: "audio",
+    rotulo: "Áudio"
+  });
+  assert.deepEqual(bot.identificarTipoMidia({ imageMessage: { caption: "foto" } }), {
+    tipo: "imagem",
+    rotulo: "Imagem"
+  });
+  assert.deepEqual(bot.identificarTipoMidia({ documentMessage: { fileName: "arquivo.pdf" } }), {
+    tipo: "documento",
+    rotulo: "Documento"
+  });
+  assert.equal(bot.identificarTipoMidia({ conversation: "texto" }), null);
+  assert.equal(
+    bot.descricaoMensagemRecebida({ tipo: "imagem", rotulo: "Imagem" }, "cilindro"),
+    "[Imagem] cilindro"
+  );
+});
+
+test("nao confunde resposta automatica do bot com mensagem manual", () => {
+  const jid = "5522888877777@s.whatsapp.net";
+  const id = `BOT-${Date.now()}`;
+  bot.registrarIdMensagemEnviadaPeloBot({ key: { id } }, jid);
+
+  const message = {
+    key: {
+      id,
+      remoteJid: jid,
+      fromMe: true
+    }
+  };
+
+  assert.equal(bot.foiMensagemEnviadaPeloBot(message, "Menu automático"), true);
+  assert.equal(bot.foiMensagemEnviadaPeloBot(message, "Menu automático"), false);
+});
+
+test("mensagem manual do atendente pausa a conversa por duas horas", async () => {
+  const sheets = require("../services/sheets");
+  const originalAssumir = sheets.assumirOuRenovarAtendimentoHumano;
+  const originalAppend = sheets.appendConversation;
+  const telefone = `5522${String(Date.now()).slice(-8)}`;
+  const jid = `${telefone}@s.whatsapp.net`;
+  let registro = null;
+
+  sheets.assumirOuRenovarAtendimentoHumano = async ({ atendente, observacao }) => ({
+    telefone,
+    status: "ATIVO",
+    inicio: new Date().toISOString(),
+    expiraEm: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    atendente,
+    observacao
+  });
+  sheets.appendConversation = async (dados) => {
+    registro = dados;
+    return true;
+  };
+
+  try {
+    const processado = await bot.processarMensagemManualAtendente({
+      jid,
+      text: "Vou verificar para você.",
+      pushName: "Atendente da BG",
+      tipoMidia: null
+    });
+
+    assert.equal(processado, true);
+    const pausa = bot.obterPausaHumanaLocal(telefone);
+    assert.ok(pausa);
+    assert.equal(pausa.atendente, "Atendente da BG");
+    assert.ok(new Date(pausa.expiraEm).getTime() > Date.now() + 119 * 60 * 1000);
+    assert.equal(registro.direction, "sent-human");
+    assert.equal(registro.message, "Vou verificar para você.");
+  } finally {
+    bot.desativarPausaHumanaLocal(telefone);
+    sheets.assumirOuRenovarAtendimentoHumano = originalAssumir;
+    sheets.appendConversation = originalAppend;
+  }
+});
+
+test("codigo contem handoff automatico para midia e resposta manual", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.equal(source.includes("processarMidiaCliente"), true);
+  assert.equal(source.includes("processarMensagemManualAtendente"), true);
+  assert.equal(
+    source.includes("Recebemos sua mensagem. Um atendente continuará o atendimento por aqui."),
+    true
+  );
 });

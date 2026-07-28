@@ -33,6 +33,8 @@ const RECONNECT_MAX_DELAY_MS = numeroEnv("RECONNECT_MAX_DELAY_MS", 60000, 1000);
 const WATCHDOG_INTERVAL_MS = numeroEnv("WATCHDOG_INTERVAL_MS", 60000, 10000);
 const SEND_RETRY_ATTEMPTS = Math.floor(numeroEnv("SEND_RETRY_ATTEMPTS", 3, 1));
 const MESSAGE_ID_TTL_MS = numeroEnv("MESSAGE_ID_TTL_MS", 10 * 60 * 1000, 60000);
+const BOT_MESSAGE_TRACK_TTL_MS = numeroEnv("BOT_MESSAGE_TRACK_TTL_MS", 2 * 60 * 1000, 10000);
+const HUMAN_HANDOFF_DURATION_MS = numeroEnv("HUMAN_HANDOFF_DURATION_MS", 2 * 60 * 60 * 1000, 60000);
 const RUNTIME_STATE_FILE = path.join(SESSION_DIR, "runtime-state.json");
 
 const NOME_OFICINA = process.env.BUSINESS_NAME || process.env.NOME_OFICINA || "BG GNV Macaé";
@@ -76,6 +78,9 @@ const respostasPalavrasChavePorDia = new Map();
 const telefonesReaisPorJid = new Map();
 const mensagensProcessadasPorId = new Map();
 const filasPorConversa = new Map();
+const idsMensagensEnviadasPeloBot = new Map();
+const enviosRecentesDoBot = new Map();
+const pausasHumanasEmMemoria = new Map();
 
 
 function agoraIso() {
@@ -143,6 +148,16 @@ function carregarEstadoRuntime() {
     for (const [chave, data] of Object.entries(estado.respostasPalavrasChavePorDia || {})) {
       if (data === hoje) respostasPalavrasChavePorDia.set(chave, data);
     }
+
+    for (const [telefone, pausa] of Object.entries(estado.pausasHumanas || {})) {
+      const expiraEmMs = new Date(pausa?.expiraEm || 0).getTime();
+      if (Number.isFinite(expiraEmMs) && expiraEmMs > Date.now()) {
+        pausasHumanasEmMemoria.set(telefone, {
+          ...pausa,
+          expiraEm: new Date(expiraEmMs).toISOString()
+        });
+      }
+    }
   } catch (error) {
     registrarErro("carregar-estado-runtime", error);
   }
@@ -156,11 +171,19 @@ function salvarEstadoRuntime() {
       [...mapa.entries()].filter(([, data]) => data === hoje)
     );
 
+    const pausasHumanas = Object.fromEntries(
+      [...pausasHumanasEmMemoria.entries()].filter(([, pausa]) => {
+        const expiraEmMs = new Date(pausa?.expiraEm || 0).getTime();
+        return Number.isFinite(expiraEmMs) && expiraEmMs > Date.now();
+      })
+    );
+
     const estado = {
-      version: 1,
+      version: 2,
       savedAt: agoraIso(),
       avisosMensagemNaoEntendidaPorDia: filtrarHoje(avisosMensagemNaoEntendidaPorDia),
-      respostasPalavrasChavePorDia: filtrarHoje(respostasPalavrasChavePorDia)
+      respostasPalavrasChavePorDia: filtrarHoje(respostasPalavrasChavePorDia),
+      pausasHumanas
     };
 
     const temporario = `${RUNTIME_STATE_FILE}.tmp`;
@@ -203,6 +226,23 @@ function limparCachesExpirados() {
   for (const [chave, data] of respostasPalavrasChavePorDia.entries()) {
     if (data !== hoje) respostasPalavrasChavePorDia.delete(chave);
   }
+
+  for (const [chave, horario] of idsMensagensEnviadasPeloBot.entries()) {
+    if (agora - horario > BOT_MESSAGE_TRACK_TTL_MS) idsMensagensEnviadasPeloBot.delete(chave);
+  }
+
+  for (const [chave, registros] of enviosRecentesDoBot.entries()) {
+    const validos = registros.filter((horario) => agora - horario <= BOT_MESSAGE_TRACK_TTL_MS);
+    if (validos.length) enviosRecentesDoBot.set(chave, validos);
+    else enviosRecentesDoBot.delete(chave);
+  }
+
+  for (const [telefone, pausa] of pausasHumanasEmMemoria.entries()) {
+    const expiraEmMs = new Date(pausa?.expiraEm || 0).getTime();
+    if (!Number.isFinite(expiraEmMs) || expiraEmMs <= agora) {
+      pausasHumanasEmMemoria.delete(telefone);
+    }
+  }
 }
 
 function mensagemJaProcessada(message) {
@@ -233,6 +273,112 @@ function enfileirarPorConversa(jid, tarefa) {
 
   filasPorConversa.set(jid, atual);
   return atual;
+}
+
+
+function chaveConteudoMensagemBot(jid, texto) {
+  return `${String(jid || "").trim()}:${normalizarTexto(texto || "")}`;
+}
+
+function registrarEnvioPendenteDoBot(jid, texto) {
+  const chave = chaveConteudoMensagemBot(jid, texto);
+  const registros = enviosRecentesDoBot.get(chave) || [];
+  registros.push(Date.now());
+  enviosRecentesDoBot.set(chave, registros);
+  return chave;
+}
+
+function removerEnvioPendenteDoBot(chave) {
+  const registros = enviosRecentesDoBot.get(chave) || [];
+  if (!registros.length) return false;
+  registros.shift();
+  if (registros.length) enviosRecentesDoBot.set(chave, registros);
+  else enviosRecentesDoBot.delete(chave);
+  return true;
+}
+
+function registrarIdMensagemEnviadaPeloBot(resultado, jid) {
+  const id = String(resultado?.key?.id || "").trim();
+  if (!id) return;
+  const agora = Date.now();
+  idsMensagensEnviadasPeloBot.set(id, agora);
+  idsMensagensEnviadasPeloBot.set(`${String(jid || "").trim()}:${id}`, agora);
+}
+
+function foiMensagemEnviadaPeloBot(message, texto = "") {
+  const jid = String(message?.key?.remoteJid || "").trim();
+  const id = String(message?.key?.id || "").trim();
+  const chaveId = `${jid}:${id}`;
+
+  if (id && (idsMensagensEnviadasPeloBot.has(id) || idsMensagensEnviadasPeloBot.has(chaveId))) {
+    idsMensagensEnviadasPeloBot.delete(id);
+    idsMensagensEnviadasPeloBot.delete(chaveId);
+    removerEnvioPendenteDoBot(chaveConteudoMensagemBot(jid, texto));
+    return true;
+  }
+
+  const chaveConteudo = chaveConteudoMensagemBot(jid, texto);
+  const registros = enviosRecentesDoBot.get(chaveConteudo) || [];
+  const agora = Date.now();
+  const indiceValido = registros.findIndex((horario) => agora - horario <= BOT_MESSAGE_TRACK_TTL_MS);
+
+  if (indiceValido >= 0) {
+    registros.splice(indiceValido, 1);
+    if (registros.length) enviosRecentesDoBot.set(chaveConteudo, registros);
+    else enviosRecentesDoBot.delete(chaveConteudo);
+    return true;
+  }
+
+  return false;
+}
+
+function ativarPausaHumanaLocal({ telefone, atendente = "Atendente", observacao = "", expiraEm = null }) {
+  const telefoneLimpo = normalizarNumeroWhatsApp(telefone);
+  if (!telefoneLimpo) return null;
+
+  const agora = new Date();
+  const expira = expiraEm ? new Date(expiraEm) : new Date(agora.getTime() + HUMAN_HANDOFF_DURATION_MS);
+  const expiraEmMs = expira.getTime();
+  if (!Number.isFinite(expiraEmMs)) return null;
+
+  const existente = pausasHumanasEmMemoria.get(telefoneLimpo);
+  const pausa = {
+    telefone: telefoneLimpo,
+    status: "ATIVO",
+    inicio: existente?.inicio || agora.toISOString(),
+    expiraEm: expira.toISOString(),
+    atendente: atendente || existente?.atendente || "Atendente",
+    observacao: observacao || existente?.observacao || ""
+  };
+
+  pausasHumanasEmMemoria.set(telefoneLimpo, pausa);
+  agendarSalvarEstadoRuntime();
+  return pausa;
+}
+
+function desativarPausaHumanaLocal(telefone) {
+  const telefoneLimpo = normalizarNumeroWhatsApp(telefone);
+  if (!telefoneLimpo) return false;
+  const removido = pausasHumanasEmMemoria.delete(telefoneLimpo);
+  if (removido) agendarSalvarEstadoRuntime();
+  return removido;
+}
+
+function obterPausaHumanaLocal(telefone) {
+  const telefoneLimpo = normalizarNumeroWhatsApp(telefone);
+  if (!telefoneLimpo) return null;
+
+  const pausa = pausasHumanasEmMemoria.get(telefoneLimpo);
+  if (!pausa) return null;
+
+  const expiraEmMs = new Date(pausa.expiraEm || 0).getTime();
+  if (!Number.isFinite(expiraEmMs) || expiraEmMs <= Date.now()) {
+    pausasHumanasEmMemoria.delete(telefoneLimpo);
+    agendarSalvarEstadoRuntime();
+    return null;
+  }
+
+  return pausa;
 }
 
 function obterCodigoDesconexao(error) {
@@ -1245,13 +1391,18 @@ async function sendTextMessage(to, text) {
 
   for (let tentativa = 1; tentativa <= SEND_RETRY_ATTEMPTS; tentativa += 1) {
     const socketAtual = sock;
+    const chaveEnvioPendente = registrarEnvioPendenteDoBot(to, text);
 
     if (!socketAtual || connectionStatus !== "conectado") {
+      removerEnvioPendenteDoBot(chaveEnvioPendente);
       ultimoErro = new Error(`WhatsApp indisponivel. Status: ${connectionStatus}`);
     } else {
       try {
-        return await socketAtual.sendMessage(to, { text });
+        const resultado = await socketAtual.sendMessage(to, { text });
+        registrarIdMensagemEnviadaPeloBot(resultado, to);
+        return resultado;
       } catch (error) {
+        removerEnvioPendenteDoBot(chaveEnvioPendente);
         ultimoErro = error;
         registrarErro(`enviar-mensagem-tentativa-${tentativa}`, error);
       }
@@ -1426,6 +1577,31 @@ function getMessageText(message) {
   ).trim();
 }
 
+
+function identificarTipoMidia(message) {
+  const conteudo = desembrulharMensagem(message);
+
+  if (conteudo.audioMessage) return { tipo: "audio", rotulo: "Áudio" };
+  if (conteudo.imageMessage) return { tipo: "imagem", rotulo: "Imagem" };
+  if (conteudo.videoMessage) return { tipo: "video", rotulo: "Vídeo" };
+  if (conteudo.documentMessage) return { tipo: "documento", rotulo: "Documento" };
+  if (conteudo.stickerMessage) return { tipo: "figurinha", rotulo: "Figurinha" };
+  if (conteudo.locationMessage || conteudo.liveLocationMessage) {
+    return { tipo: "localizacao", rotulo: "Localização" };
+  }
+  if (conteudo.contactMessage || conteudo.contactsArrayMessage) {
+    return { tipo: "contato", rotulo: "Contato" };
+  }
+
+  return null;
+}
+
+function descricaoMensagemRecebida(tipoMidia, texto = "") {
+  const legenda = String(texto || "").trim();
+  if (!tipoMidia) return legenda;
+  return legenda ? `[${tipoMidia.rotulo}] ${legenda}` : `[${tipoMidia.rotulo}]`;
+}
+
 function ehComandoAtendimentoHumano(texto) {
   return ["#assumir", "#liberar", "#status", "#renovar"].includes(normalizarTexto(texto));
 }
@@ -1505,6 +1681,59 @@ Tempo restante:
 ${formatarTempoRestante(atendimento.expiraEm)}`;
 }
 
+
+async function ativarOuRenovarPausaHumana({
+  jid,
+  telefone = null,
+  atendente = "Atendente",
+  observacao = "Atendente respondeu manualmente"
+}) {
+  const telefoneCliente = normalizarNumeroWhatsApp(telefone || telefoneLimpoPorJid(jid));
+  if (!telefoneCliente) return null;
+
+  const pausaLocal = ativarPausaHumanaLocal({
+    telefone: telefoneCliente,
+    atendente,
+    observacao
+  });
+
+  try {
+    const salvo = await sheets.assumirOuRenovarAtendimentoHumano({
+      telefone: telefoneCliente,
+      atendente,
+      observacao
+    });
+
+    if (salvo?.expiraEm) {
+      ativarPausaHumanaLocal({
+        telefone: telefoneCliente,
+        atendente: salvo.atendente || atendente,
+        observacao: salvo.observacao || observacao,
+        expiraEm: salvo.expiraEm
+      });
+    }
+  } catch (error) {
+    registrarErro("sincronizar-pausa-humana", error);
+  }
+
+  return pausaLocal;
+}
+
+async function liberarPausaHumana(telefone) {
+  const telefoneCliente = normalizarNumeroWhatsApp(telefone);
+  if (!telefoneCliente) return false;
+
+  desativarPausaHumanaLocal(telefoneCliente);
+
+  try {
+    await sheets.desativarAtendimentoHumano(telefoneCliente);
+  } catch (error) {
+    registrarErro("liberar-pausa-humana", error);
+  }
+
+  return true;
+}
+
 async function processarComandoAtendimentoHumano({ jid, text, pushName, fromMe }) {
   const comando = normalizarTexto(text);
   if (!ehComandoAtendimentoHumano(comando)) return false;
@@ -1516,10 +1745,11 @@ async function processarComandoAtendimentoHumano({ jid, text, pushName, fromMe }
   const atendente = pushName || (fromMe ? "Atendente" : telefoneCliente);
 
   if (comando === "#assumir") {
-    await sheets.ativarAtendimentoHumano({
+    await ativarOuRenovarPausaHumana({
+      jid,
       telefone: telefoneCliente,
       atendente,
-      observacao: ""
+      observacao: "Atendimento assumido manualmente"
     });
 
     await responderComandoAtendente(
@@ -1534,14 +1764,15 @@ O bot ficará pausado por 2 horas.`,
   }
 
   if (comando === "#liberar") {
-    await sheets.desativarAtendimentoHumano(telefoneCliente);
+    await liberarPausaHumana(telefoneCliente);
 
     await responderComandoAtendente(jid, "🤖 Atendimento automático reativado.", fromMe);
     return true;
   }
 
   if (comando === "#status") {
-    const atendimento = await sheets.statusAtendimentoHumano(telefoneCliente);
+    const atendimento = obterPausaHumanaLocal(telefoneCliente) ||
+      await sheets.statusAtendimentoHumano(telefoneCliente).catch(() => null);
     await responderComandoAtendente(
       jid,
       montarStatusAtendimentoHumano(telefoneCliente, atendimento),
@@ -1551,9 +1782,10 @@ O bot ficará pausado por 2 horas.`,
   }
 
   if (comando === "#renovar") {
-    const renovado = await sheets.renovarAtendimentoHumano(telefoneCliente);
+    const existente = obterPausaHumanaLocal(telefoneCliente) ||
+      await sheets.statusAtendimentoHumano(telefoneCliente).catch(() => null);
 
-    if (!renovado) {
+    if (!existente) {
       await responderComandoAtendente(
         jid,
         "🤖 Não encontrei atendimento humano ativo para renovar nesta conversa.",
@@ -1562,9 +1794,16 @@ O bot ficará pausado por 2 horas.`,
       return true;
     }
 
+    await ativarOuRenovarPausaHumana({
+      jid,
+      telefone: telefoneCliente,
+      atendente: atendente || existente.atendente || "Atendente",
+      observacao: existente.observacao || "Atendimento renovado manualmente"
+    });
+
     await responderComandoAtendente(
       jid,
-      "🤖 Atendimento humano renovado por mais 2 horas.",
+      "🤖 Atendimento humano renovado por 2 horas a partir de agora.",
       fromMe
     );
     return true;
@@ -1575,8 +1814,91 @@ O bot ficará pausado por 2 horas.`,
 
 async function atendimentoHumanoPausado(jid) {
   const telefone = telefoneLimpoPorJid(jid);
-  const atendimento = await sheets.atendimentoHumanoEstaAtivo(telefone);
-  return Boolean(atendimento);
+  const pausaLocal = obterPausaHumanaLocal(telefone);
+  if (pausaLocal) return true;
+
+  try {
+    const atendimento = await sheets.atendimentoHumanoEstaAtivo(telefone);
+    if (!atendimento) return false;
+
+    ativarPausaHumanaLocal({
+      telefone,
+      atendente: atendimento.atendente || "Atendente",
+      observacao: atendimento.observacao || "Atendimento humano ativo",
+      expiraEm: atendimento.expiraEm
+    });
+    return true;
+  } catch (error) {
+    registrarErro("consultar-pausa-humana", error);
+    return false;
+  }
+}
+
+async function processarMensagemManualAtendente({ jid, text, pushName, tipoMidia }) {
+  if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") return false;
+
+  const telefone = telefoneLimpoPorJid(jid);
+  if (!telefone || ehAtendente(telefone)) return false;
+
+  const atendente = pushName || process.env.ATTENDANT_NAME || "Atendente";
+  const descricao = descricaoMensagemRecebida(tipoMidia, text) || "[Mensagem manual]";
+
+  await ativarOuRenovarPausaHumana({
+    jid,
+    telefone,
+    atendente,
+    observacao: `Pausa automática: atendente respondeu manualmente (${tipoMidia?.rotulo || "texto"})`
+  });
+
+  try {
+    await sheets.appendConversation({
+      date: new Date(),
+      name: atendente,
+      phone: telefone,
+      message: descricao,
+      matchedService: "atendimento-humano",
+      direction: "sent-human"
+    });
+  } catch (error) {
+    registrarErro("registrar-mensagem-manual", error);
+  }
+
+  console.log(`Atendimento humano ativado automaticamente para ${telefone}.`);
+  return true;
+}
+
+async function processarMidiaCliente({ jid, text, pushName, tipoMidia }) {
+  const telefone = telefoneLimpoPorJid(jid);
+  const nomeCliente = pushName || "";
+  const descricao = descricaoMensagemRecebida(tipoMidia, text);
+
+  try {
+    await salvarConversa({
+      jid,
+      nome: nomeCliente,
+      mensagem: descricao,
+      opcao: "midia"
+    });
+  } catch (error) {
+    registrarErro("registrar-midia-cliente", error);
+  }
+
+  if (await atendimentoHumanoPausado(jid)) return true;
+
+  await ativarOuRenovarPausaHumana({
+    jid,
+    telefone,
+    atendente: "Aguardando atendente",
+    observacao: `Pausa automática: cliente enviou ${tipoMidia.rotulo.toLowerCase()}`
+  });
+
+  await responderERegistrar(
+    jid,
+    "Recebemos sua mensagem. Um atendente continuará o atendimento por aqui.",
+    "atendimento-humano"
+  );
+
+  return true;
 }
 
 async function handleIncomingMessage({ jid, text, pushName }) {
@@ -1671,10 +1993,24 @@ ${HORARIO_OFICINA}`,
   await responderERegistrar(jid, resposta, opcao);
 
   if (opcao === "9") {
-    await sheets.criarAtendimentoHumanoAguardando({
+    let atendimentoAguardando = null;
+
+    try {
+      atendimentoAguardando = await sheets.criarAtendimentoHumanoAguardando({
+        telefone: from,
+        observacao: "Solicitou atendimento humano"
+      });
+    } catch (error) {
+      registrarErro("criar-atendimento-humano-aguardando", error);
+    }
+
+    ativarPausaHumanaLocal({
       telefone: from,
-      observacao: "Solicitou atendimento humano"
+      atendente: "Aguardando atendente",
+      observacao: "Solicitou atendimento humano",
+      expiraEm: atendimentoAguardando?.expiraEm || new Date(Date.now() + 15 * 60 * 1000)
     });
+
     await avisarPedidoAtendimentoHumano(from, nomeCliente, text);
   }
 }
@@ -1683,6 +2019,7 @@ async function processarUmaMensagem(message) {
   const jid = message?.key?.remoteJid;
   const fromMe = Boolean(message?.key?.fromMe);
   const text = getMessageText(message?.message);
+  const tipoMidia = identificarTipoMidia(message?.message);
 
   if (!jid) return;
 
@@ -1693,16 +2030,47 @@ async function processarUmaMensagem(message) {
     console.warn("Nao foi possivel resolver o telefone real do JID LID:", jid);
   }
   if (IGNORE_GROUPS && jid.endsWith("@g.us")) return;
+  if (jid === "status@broadcast") return;
+
+  if (text) {
+    const comandoProcessado = await processarComandoAtendimentoHumano({
+      jid,
+      text,
+      pushName: message.pushName || "",
+      fromMe
+    });
+
+    if (comandoProcessado) {
+      lastMessageProcessedAt = agoraIso();
+      return;
+    }
+  }
+
+  if (fromMe) {
+    if (foiMensagemEnviadaPeloBot(message, text)) return;
+
+    await processarMensagemManualAtendente({
+      jid,
+      text,
+      pushName: message.pushName || "",
+      tipoMidia
+    });
+    lastMessageProcessedAt = agoraIso();
+    return;
+  }
+
+  if (tipoMidia) {
+    await processarMidiaCliente({
+      jid,
+      text,
+      pushName: message.pushName || "",
+      tipoMidia
+    });
+    lastMessageProcessedAt = agoraIso();
+    return;
+  }
+
   if (!text) return;
-
-  const comandoProcessado = await processarComandoAtendimentoHumano({
-    jid,
-    text,
-    pushName: message.pushName || "",
-    fromMe
-  });
-
-  if (comandoProcessado || fromMe) return;
 
   await handleIncomingMessage({
     jid,
@@ -1966,6 +2334,8 @@ function montarHealthCheck() {
     processing: {
       activeConversationQueues: filasPorConversa.size,
       rememberedMessageIds: mensagensProcessadasPorId.size,
+      trackedBotMessageIds: idsMensagensEnviadasPeloBot.size,
+      humanPausedConversations: pausasHumanasEmMemoria.size,
       lastMessageReceivedAt,
       lastMessageProcessedAt
     },
@@ -2072,5 +2442,13 @@ module.exports = {
   deveResponderPalavraChaveHoje,
   salvarEstadoRuntime,
   normalizarTexto,
-  extrairOpcao
+  extrairOpcao,
+  identificarTipoMidia,
+  descricaoMensagemRecebida,
+  registrarIdMensagemEnviadaPeloBot,
+  foiMensagemEnviadaPeloBot,
+  ativarPausaHumanaLocal,
+  desativarPausaHumanaLocal,
+  obterPausaHumanaLocal,
+  processarMensagemManualAtendente
 };
