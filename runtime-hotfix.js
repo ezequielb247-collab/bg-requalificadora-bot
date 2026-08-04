@@ -100,9 +100,6 @@ function foiMensagemEnviadaPeloBot(message, texto = "") {
     return true;
   }
 
-  // No WhatsApp multi-dispositivo, a mesma mensagem pode voltar com JID LID,
-  // embora tenha sido enviada para o JID de telefone. A comparacao global
-  // curta cobre essa corrida sem confundir respostas manuais normais.
   const ttlGlobal = Math.min(BOT_MESSAGE_TRACK_TTL_MS, 30000);
   if (consumirRegistroEnvioBot(chaveGlobal, ttlGlobal)) {
     return true;
@@ -118,7 +115,7 @@ const loadMarker =
   'for (const [telefone, pausa] of Object.entries(estado.pausasHumanas || {})) {\n';
 const migration = `for (const [telefone, pausa] of Object.entries(estado.pausasHumanas || {})) {
       const pausaAutomaticaAntiga =
-        Number(estado.version || 0) < 3 &&
+        Number(estado.version || 0) < 4 &&
         String(pausa?.observacao || "").includes("Pausa automática: atendente respondeu manualmente");
       if (pausaAutomaticaAntiga) continue;
 `;
@@ -127,7 +124,51 @@ if (!source.includes(loadMarker)) {
   throw new Error("Nao foi possivel aplicar a migracao das pausas antigas.");
 }
 source = source.replace(loadMarker, migration);
-source = source.replace("version: 2,", "version: 3,");
+source = source.replace("version: 2,", "version: 4,");
+
+const fromMeMarker = `  if (fromMe) {
+    if (foiMensagemEnviadaPeloBot(message, text)) return;
+
+    await processarMensagemManualAtendente({`;
+
+const fromMeReplacement = `  if (fromMe) {
+    if (foiMensagemEnviadaPeloBot(message, text)) return;
+
+    if (String(jid).endsWith("@lid") && !telefoneReal) {
+      console.log(
+        "Mensagem enviada no chat LID sem telefone real ignorada para conciliacao humana:",
+        jid
+      );
+      lastMessageProcessedAt = agoraIso();
+      return;
+    }
+
+    await processarMensagemManualAtendente({`;
+
+if (!source.includes(fromMeMarker)) {
+  throw new Error("Nao foi possivel aplicar a protecao para JID LID sem telefone real.");
+}
+source = source.replace(fromMeMarker, fromMeReplacement);
+
+const manualMarker = `async function processarMensagemManualAtendente({ jid, text, pushName, tipoMidia }) {
+  if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") return false;
+
+  const telefone = telefoneLimpoPorJid(jid);`;
+
+const manualReplacement = `async function processarMensagemManualAtendente({ jid, text, pushName, tipoMidia }) {
+  if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") return false;
+
+  if (String(jid).endsWith("@lid") && !telefonesReaisPorJid.get(String(jid))) {
+    console.log("Pausa humana nao ativada: JID LID ainda sem telefone real.", jid);
+    return false;
+  }
+
+  const telefone = telefoneLimpoPorJid(jid);`;
+
+if (!source.includes(manualMarker)) {
+  throw new Error("Nao foi possivel reforcar a protecao da pausa humana para JID LID.");
+}
+source = source.replace(manualMarker, manualReplacement);
 
 fs.writeFileSync(runtimePath, source, "utf8");
 
