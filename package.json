@@ -4,10 +4,10 @@
   "description": "Bot de WhatsApp via QR Code usando Baileys, Express e Google Sheets.",
   "main": "index.js",
   "scripts": {
-    "start": "node runtime-hotfix.js",
-    "dev": "nodemon runtime-hotfix.js",
+    "start": "node business-launcher.js",
+    "dev": "nodemon business-launcher.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check runtime-hotfix.js && node --check index.js && node --check services/sheets.js"
+    "check": "node --check business-launcher.js && node --check runtime-hotfix.js && node --check index.js && node --check services/sheets.js"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
