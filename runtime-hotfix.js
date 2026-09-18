@@ -215,6 +215,54 @@ if (!source.includes(manualMarker)) {
 }
 source = source.replace(manualMarker, manualReplacement);
 
+// O exemplo atual do Baileys recomenda reconectar em fechamentos que nao sejam
+// logout. Aqui mantemos connectionReplaced/multideviceMismatch como terminais
+// para evitar duas instancias disputando a mesma conta, mas tratamos badSession
+// como recuperavel. Isso formaliza o comportamento que o watchdog ja provocava
+// indiretamente e reduz o tempo offline apos um erro 500 transitório.
+const reconnectMarker = `function deveReconectar(codigo) {
+  const motivosTerminais = [
+    DisconnectReason.loggedOut,
+    DisconnectReason.badSession,
+    DisconnectReason.connectionReplaced,
+    DisconnectReason.multideviceMismatch
+  ].filter((valor) => Number.isFinite(Number(valor)));
+
+  return !motivosTerminais.includes(Number(codigo));
+}`;
+
+const reconnectReplacement = `function deveReconectar(codigo) {
+  const motivosTerminais = [
+    DisconnectReason.loggedOut,
+    DisconnectReason.connectionReplaced,
+    DisconnectReason.multideviceMismatch
+  ].filter((valor) => Number.isFinite(Number(valor)));
+
+  return !motivosTerminais.includes(Number(codigo));
+}`;
+
+if (!source.includes(reconnectMarker)) {
+  throw new Error("Nao foi possivel aplicar a politica segura de reconexao.");
+}
+source = source.replace(reconnectMarker, reconnectReplacement);
+
+const watchdogMarker = `    if (!sock || estadosQuePrecisamReconexao.has(connectionStatus)) {
+      agendarReconexao("watchdog");
+    }`;
+
+const watchdogReplacement = `    // Estados realmente terminais precisam de nova vinculacao/decisao humana.
+    // Nao deixe o watchdog recriar sockets indefinidamente nesses casos.
+    if (connectionStatus === "sessao precisa de novo QR Code") return;
+
+    if (!sock || estadosQuePrecisamReconexao.has(connectionStatus)) {
+      agendarReconexao("watchdog");
+    }`;
+
+if (!source.includes(watchdogMarker)) {
+  throw new Error("Nao foi possivel proteger o watchdog contra sessoes terminais.");
+}
+source = source.replace(watchdogMarker, watchdogReplacement);
+
 fs.writeFileSync(runtimePath, source, "utf8");
 
 const child = spawn(process.execPath, [runtimePath], {
