@@ -7,6 +7,51 @@ const runtimePath = path.join(__dirname, ".index.runtime.js");
 
 let source = fs.readFileSync(sourcePath, "utf8");
 
+// O libsignal usado pelo Baileys escreve alguns detalhes de sessao diretamente
+// em console.*, ignorando o logger configurado no socket. Alguns desses logs
+// incluem material criptografico interno (inclusive chaves privadas). O filtro
+// abaixo roda dentro do processo real do bot e remove somente essas mensagens
+// conhecidas, preservando os demais logs da aplicacao.
+const logProtection = String.raw`
+(() => {
+  const originais = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console)
+  };
+  const prefixosSensiveis = [
+    "Closing session:",
+    "Closing open session in favor of incoming prekey bundle",
+    "Closing stale open session for new outgoing prekey bundle",
+    "Removing old closed session:",
+    "Session error:Error: Bad MAC",
+    "Failed to decrypt message with any known session"
+  ];
+  let ultimoResumo = 0;
+
+  const proteger = (metodo) => (...args) => {
+    const primeira = typeof args[0] === "string" ? args[0] : "";
+    if (prefixosSensiveis.some((prefixo) => primeira.startsWith(prefixo))) {
+      const agora = Date.now();
+      if (agora - ultimoResumo >= 60000) {
+        ultimoResumo = agora;
+        originais.warn(
+          "[whatsapp-signal] Evento interno de sessao detectado; detalhes criptograficos foram omitidos do log."
+        );
+      }
+      return;
+    }
+    originais[metodo](...args);
+  };
+
+  console.log = proteger("log");
+  console.warn = proteger("warn");
+  console.error = proteger("error");
+})();
+`;
+
+source = logProtection + "\n" + source;
+
 const startMarker = "\nfunction chaveConteudoMensagemBot";
 const endMarker = "\nfunction ativarPausaHumanaLocal";
 const start = source.indexOf(startMarker);
