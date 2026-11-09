@@ -821,7 +821,31 @@ async function carregarValores() {
   };
 }
 
+function campanhaBlackFridayAtiva(agora = new Date()) {
+  const partes = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(agora);
+  const campos = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+  return Number(campos.year) === 2026 && Number(campos.month) === 11 && Number(campos.day) >= 1 && Number(campos.day) <= 30;
+}
+
+function respostaBlackFriday() {
+  if (!campanhaBlackFridayAtiva()) return "A campanha Black Friday BG GNV de novembro de 2026 foi encerrada. Para consultar os valores atuais, envie *valores*.";
+  return `🖤 BLACK FRIDAY BG GNV — NOVEMBRO 2026
+
+🔥 Reteste + revisão do kit de 3ª geração
+💳 Cartão: R$ 730,00 em até 5x sem juros
+💵 À vista (dinheiro ou Pix): R$ 650,00
+
+🔥 Reteste + revisão do kit de 5ª geração
+💳 Cartão: R$ 900,00 em até 5x sem juros
+💵 À vista (dinheiro ou Pix): R$ 800,00
+
+📅 Promoção válida até 30/11/2026.
+Os pacotes incluem reteste e revisão realizados juntos.
+Para falar com a equipe, envie *9*. Para voltar ao menu, envie *menu*.`;
+}
+
 async function montarResposta(opcao) {
+  if (opcao === "blackfriday") return respostaBlackFriday();
   const valores = await carregarValores();
 
   if (opcao === "valores") {
@@ -1055,7 +1079,7 @@ Escolha uma opção digitando o número:`;
 6. Limpeza arrefecimento
 7. Documentos
 8. Endereço e horário
-9. Falar com atendente`;
+9. Falar com atendente${campanhaBlackFridayAtiva() ? "\n10. Black Friday — Reteste + Revisão" : ""}`;
 }
 
 function textoTemAlgumaPalavra(texto, palavras) {
@@ -1359,6 +1383,7 @@ function isExactMenuOption(text) {
 
 function extrairOpcao(texto) {
   const textoLimpo = String(texto || "").trim();
+  if (/^(10|black ?friday|blackfriday|promocao|promocoes|combo|combos|pacote|pacotes)$/i.test(normalizarTexto(textoLimpo))) return "blackfriday";
   const opcaoExata = isExactMenuOption(textoLimpo);
   if (opcaoExata) return opcaoExata;
 
